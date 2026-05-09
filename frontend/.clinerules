@@ -1,0 +1,41 @@
+# Next.js 16 專案規範
+
+## 版本資訊
+- Next.js: 16.2 (最新穩定版)
+- React: 19.2
+- Node.js: 18.18+
+
+## 必讀文件
+請嚴格遵守 .ai/NEXTJS_DESIGN_GUIDE.md 的所有規範
+
+## ⚠️ 重大變更提醒
+1. **所有 request APIs 都要 await**
+   - await cookies()
+   - await headers()
+   - await params
+   - await searchParams
+
+2. **預設不快取 - 要明確指定**
+   - fetch 加上 next: { revalidate }
+   - 或用 'use cache' 指令
+
+3. **優先用 Server Actions,不要用 API Routes**
+   - 表單提交 → Server Actions
+   - 資料變更 → Server Actions
+   - API 給第三方 → Route Handlers
+
+4. **React 19 必備**
+   - useActionState (不是 useFormState)
+   - useOptimistic
+   - use() hook
+
+## 開發規則
+- Turbopack 已預設啟用 (快很多)
+- 考慮用 PPR 做混合頁面
+- Server Components 優先
+- 用 TypeScript strict mode
+
+## 常用指令
+npm run dev      # Turbopack 開發伺服器
+npm run build    # 生產環境建置
+npm run start    # 啟動生產伺服器

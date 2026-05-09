@@ -1,0 +1,61 @@
+# Render blueprint — declarative service config so the backend can be rebuilt
+# from a single push without clicking through the dashboard.
+# Docs: https://render.com/docs/blueprint-spec
+#
+# How to use:
+#   1. Push this repo to GitHub.
+#   2. In Render dashboard → "New" → "Blueprint" → connect the repo.
+#   3. Render reads this file and provisions the backend service.
+#   4. Set the secrets marked `sync: false` in the dashboard before first deploy.
+#
+# The frontend lives on Vercel (separate platform, separate config) — see DEPLOY.md.
+services:
+  - type: web
+    name: arxivlens-backend
+    runtime: docker
+    plan: free                 # 512 MB RAM, sleeps after 15 min idle
+    region: singapore          # closest to TW; pick another if your DB is elsewhere
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /actuator/health
+    autoDeploy: true           # rebuild on every push to main
+
+    envVars:
+      # Spring profile — switches off schema.sql / data.sql, turns on Hibernate
+      # auto-migration, quiets logs.
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+
+      # Render injects PORT automatically; declared here so Spring picks it up via
+      # ${PORT:8080} in application.properties. No need to set in dashboard.
+      - key: PORT
+        value: 10000
+
+      # JVM tuning for the 512 MB free tier — leave heap headroom for native + GC.
+      - key: JAVA_OPTS
+        value: -XX:MaxRAMPercentage=70.0 -XX:+UseSerialGC -Xss512k
+
+      # All secrets/connection strings are set in the Render dashboard. Marking them
+      # `sync: false` keeps them OUT of this file (so the file can stay in git).
+      - key: SPRING_DATASOURCE_URL
+        sync: false           # jdbc:mysql://<tidb-host>:4000/arxivlens?useSSL=true&...
+      - key: SPRING_DATASOURCE_USERNAME
+        sync: false
+      - key: SPRING_DATASOURCE_PASSWORD
+        sync: false
+
+      - key: JWT_SECRET
+        sync: false           # 32+ random bytes; generate with `openssl rand -hex 32`
+
+      - key: GEMINI_API_KEY
+        sync: false           # leave unset to disable AI features instead of erroring
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+
+      # Comma-separated whitelist of frontend origins. Update after Vercel deploys.
+      - key: APP_CORS_ALLOWED_ORIGINS
+        sync: false           # https://arxivlens.vercel.app,https://arxivlens-*.vercel.app
+
+      # Toggle scheduler if you want to throttle outbound API usage on cold starts.
+      - key: SCHEDULER_ENABLED
+        value: "true"

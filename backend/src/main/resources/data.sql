@@ -1,0 +1,36 @@
+-- arxivLens — seed data (MySQL 8)
+-- Idempotent: uses INSERT IGNORE.
+
+-- ----- settings (single row) -----
+INSERT IGNORE INTO settings (id, default_days, max_results_per_sync, auto_refresh_interval_minutes)
+VALUES (1, 7, 50, 360);
+
+-- ----- data_sources -----
+INSERT IGNORE INTO data_sources (id, code, name, description, is_enabled, display_order) VALUES
+  (1, 'arxiv', 'arXiv',                    'Computer science & physics preprints — synced every 6 hours.', 1, 1),
+  (2, 'hbr',   'Harvard Business Review',  'Management & leadership insights via RSS.',                    1, 2);
+
+-- ----- topics -----
+-- arXiv categories
+INSERT IGNORE INTO topics (source_id, code, name, is_enabled) VALUES
+  (1, 'cs.AI', 'Artificial Intelligence',     1),
+  (1, 'cs.LG', 'Machine Learning',            1),
+  (1, 'cs.CL', 'Computation and Language',    1),
+  (1, 'cs.CV', 'Computer Vision',             1),
+  (1, 'cs.SE', 'Software Engineering',        0),
+  (1, 'cs.DC', 'Distributed Computing',       0);
+-- HBR categories
+INSERT IGNORE INTO topics (source_id, code, name, is_enabled) VALUES
+  (2, 'leadership', 'Leadership',              1),
+  (2, 'strategy',   'Strategy',                1),
+  (2, 'innovation', 'Innovation',              1),
+  (2, 'org',        'Organizational Culture',  1),
+  (2, 'data',       'Data & Analytics',        1);
+
+-- NOTE: papers / favorites / ai_summaries / downloads are NOT seeded here.
+-- StartupSyncRunner triggers an async sync against arXiv + HBR right after the
+-- application starts so users see real, recent papers on first login. Demo seed
+-- papers were removed because their captions did not match the real documents
+-- the URLs would have served.
+-- users + user_preferences are seeded programmatically by DataSeeder so password
+-- hashes are produced with a real BCryptPasswordEncoder.

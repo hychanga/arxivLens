@@ -1,0 +1,9 @@
+# 前端設計規範
+請嚴格遵守 .ai/FRONTEND_DESIGN_GUIDE.md 裡的所有規範
+
+重點提醒：
+- 避免 generic AI 風格（過度圓角、漸層、玻璃效果）
+- 使用 Tailwind CSS 或 CSS Modules
+- 確保 mobile-first 響應式設計
+- 所有元件要有 TypeScript types
+- 注意 accessibility (a11y)
