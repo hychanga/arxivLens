@@ -11,6 +11,7 @@ import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
 
@@ -48,6 +49,7 @@ public class User {
     @Column(nullable = false, length = 32)
     private String role = "USER";
 
-    @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 }

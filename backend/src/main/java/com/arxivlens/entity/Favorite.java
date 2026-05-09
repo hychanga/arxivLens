@@ -15,6 +15,7 @@ import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
 
@@ -48,6 +49,7 @@ public class Favorite {
     @Column(columnDefinition = "TEXT")
     private String note;
 
-    @Column(name = "saved_at", nullable = false, updatable = false, insertable = false)
+    @CreationTimestamp
+    @Column(name = "saved_at", nullable = false, updatable = false)
     private Instant savedAt;
 }

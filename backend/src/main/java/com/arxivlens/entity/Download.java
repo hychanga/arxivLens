@@ -15,6 +15,7 @@ import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
 
@@ -52,6 +53,7 @@ public class Download {
     @JsonProperty("sizeMB")
     private Double sizeMb;
 
-    @Column(name = "downloaded_at", nullable = false, updatable = false, insertable = false)
+    @CreationTimestamp
+    @Column(name = "downloaded_at", nullable = false, updatable = false)
     private Instant downloadedAt;
 }

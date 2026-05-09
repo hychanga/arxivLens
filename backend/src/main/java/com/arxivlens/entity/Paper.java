@@ -16,6 +16,7 @@ import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
 
@@ -82,6 +83,7 @@ public class Paper {
     @Column(name = "published_at", nullable = false)
     private Instant publishedAt;
 
-    @Column(name = "fetched_at", nullable = false, updatable = false, insertable = false)
+    @CreationTimestamp
+    @Column(name = "fetched_at", nullable = false, updatable = false)
     private Instant fetchedAt;
 }

@@ -9,6 +9,7 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
 
@@ -38,6 +39,7 @@ public class Source {
     @Column(name = "display_order", nullable = false)
     private Integer displayOrder = 0;
 
-    @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 }
