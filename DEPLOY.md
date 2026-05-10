@@ -54,7 +54,7 @@ git push -u origin main
 
 1. Sign up at <https://tidbcloud.com> → Sign in with Google.
 2. Create a **Serverless** cluster (the only free option).
-   - Region: pick the same region you will set on Render (e.g. `Singapore (ap-southeast-1)`).
+   - Region: any AWS region works. The DB and backend can be in different regions — TiDB region choice is permanent on the free tier, so pick one that's likely to stay close to wherever you might host the backend later. `Singapore (ap-southeast-1)` and `Oregon (us-west-2)` are both fine; this guide later puts the backend on Render Oregon (Render's Singapore IPs are blocked by Google's Gemini geo-IP filter — see step 2). Cross-region adds ~150 ms per query but is acceptable for hobby use.
    - Cluster name: `arxivlens` (anything works).
 3. Once the cluster is `ACTIVE`, click **Connect**:
    - Connection type: **Public**.
@@ -65,15 +65,21 @@ git push -u origin main
    - **Port:** `4000`
    - **User:** something like `2xK7…root`
    - **Password:** what you generated
-5. Create the application database:
-   - In the TiDB Cloud UI, open the SQL Editor, run:
-     ```sql
-     CREATE DATABASE arxivlens CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-     ```
-6. Build the JDBC URL the backend will use (replace `<HOST>`, `<USER>`, `<PASS>`):
+5. Create the application database. **Where:** in TiDB Cloud's left sidebar click **SQL Editor** (some accounts call it **Chat2Query**). Pick your cluster from the dropdown at the top of the editor, paste the statement below, and hit **Run** (or `Ctrl+Enter`):
+   ```sql
+   CREATE DATABASE arxivlens CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+   ```
+   Expected output: `Query OK, 0 rows affected`. If your account also has a default `test` database you can use that instead, but `arxivlens` is cleaner.
+
+6. Build the JDBC URL the backend will use. **Where:** just in a text editor / sticky note — you'll paste it into Render in step 2.3, this isn't a UI action in TiDB. Take the template below and replace `<HOST>` with the host from step 1.4:
    ```
    jdbc:mysql://<HOST>:4000/arxivlens?useSSL=true&requireSSL=true&enabledTLSProtocols=TLSv1.2,TLSv1.3&serverTimezone=UTC&characterEncoding=utf8
    ```
+   Concrete example after substitution:
+   ```
+   jdbc:mysql://gateway01.ap-southeast-1.prod.aws.tidbcloud.com:4000/arxivlens?useSSL=true&requireSSL=true&enabledTLSProtocols=TLSv1.2,TLSv1.3&serverTimezone=UTC&characterEncoding=utf8
+   ```
+   The `username` and `password` are **not** in the URL — Spring sends them as separate `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD` env vars (also set in Render later).
 
 ## 2. Deploy the backend (Render)
 
@@ -91,8 +97,8 @@ git push -u origin main
    | `APP_CORS_ALLOWED_ORIGINS`   | leave blank for now — fill after Vercel deploys (step 3.4)  |
 
 4. Click **Apply**. First build takes ~5–8 min (Maven download + Docker layer build).
-5. When the service shows `Live`, note its URL: `https://arxivlens-backend-XXXX.onrender.com`.
-6. Sanity check: `curl https://arxivlens-backend-XXXX.onrender.com/actuator/health` → `{"status":"UP"}`.
+5. When the service shows `Live`, note its URL. Render normally gives you the bare service name (`https://arxivlens-backend.onrender.com`); if your name was already taken Render appends a hash (e.g. `https://arxivlens-backend-abc1.onrender.com`). Use whichever Render shows.
+6. Sanity check: `curl https://arxivlens-backend.onrender.com/actuator/health` → `{"status":"UP"}`.
 
 > The free tier sleeps after 15 min idle. The first request after sleep returns in ~30 s. The startup sync runner will refresh real arXiv / HBR data each time the service wakes.
 
@@ -105,16 +111,25 @@ git push -u origin main
 
    | Key                      | Value                                                |
    | ------------------------ | ---------------------------------------------------- |
-   | `NEXT_PUBLIC_API_URL`    | `https://arxivlens-backend-XXXX.onrender.com/api`    |
+   | `NEXT_PUBLIC_API_URL`    | `https://arxivlens-backend.onrender.com/api` (use the URL from step 2.5) |
 
-   Apply the variable to **Production**, **Preview**, and **Development**.
+   Apply the variable to **Production**, **Preview**, and **Development**. `NEXT_PUBLIC_*` vars are baked in at build time, so any later change to this URL requires a Vercel redeploy.
 5. **Deploy**. First build ~2 min.
 6. Once live, copy the Vercel URL: `https://arxivlens.vercel.app` (and the auto-generated preview pattern, e.g. `https://arxivlens-*.vercel.app`).
-7. Go back to **Render → arxivlens-backend → Environment** and set:
+7. Go back to **Render → arxivlens-backend → Environment** and set `APP_CORS_ALLOWED_ORIGINS`. Simplest value is just the production URL:
    ```
-   APP_CORS_ALLOWED_ORIGINS=https://arxivlens.vercel.app,https://arxivlens-git-main-yourname.vercel.app
+   APP_CORS_ALLOWED_ORIGINS=https://arxivlens.vercel.app
    ```
-   Comma-separated list, no trailing slash, no whitespace. Save → Render redeploys (~1 min).
+   If you also want PR preview URLs to work, list them comma-separated. Vercel's preview pattern is:
+   ```
+   https://arxivlens-git-<branch>-<vercel-team-slug>.vercel.app
+   ```
+   To find your exact team slug: Vercel dashboard → arxivlens project → Deployments → copy the host name from any preview deployment. Free Hobby accounts default to `<username>-projects`, e.g.:
+   ```
+   APP_CORS_ALLOWED_ORIGINS=https://arxivlens.vercel.app,https://arxivlens-git-main-greg-projects.vercel.app
+   ```
+   Comma-separated, no trailing slash, no whitespace. Save → Render redeploys (~1 min).
+   *(For a single wildcard that covers every preview URL, switch SecurityConfig from `setAllowedOrigins` to `setAllowedOriginPatterns`.)*
 
 ## 4. First-time bootstrap
 
@@ -143,6 +158,7 @@ Vercel typically finishes in ~1 min, Render in ~5 min (Docker rebuild).
 | Backend health check fails / `out of memory` in Render logs              | 512 MB is tight. Some startup spike pushes over.                                     | Lower `MaxRAMPercentage` to 60, switch to `-XX:+UseSerialGC` (already set in render.yaml) |
 | Login works but Latest is empty for a long time                          | First wake-up sync is still running, or Render slept                                 | Refresh after 15 s. If still empty, check Render logs for sync errors                     |
 | `Gemini 403: API_KEY_INVALID`                                            | Wrong / unenabled key                                                                | Regenerate key in AI Studio; key must come from `aistudio.google.com/apikey` (not Cloud Console) |
+| `Gemini 400: User location is not supported`                             | Render egress IP geo-blocked by Google (Singapore, some EU regions)                  | Move the Render service to `oregon` (already the default in `render.yaml`). Region change requires creating a new service and re-entering all `sync: false` env vars |
 | `Communications link failure` to TiDB                                    | Wrong region or missing TLS args                                                     | URL must include `useSSL=true&enabledTLSProtocols=TLSv1.2,TLSv1.3`                        |
 | Render build fails: `Cannot find symbol DataSeeder constructor argument` | Old artifact compiled before the seeder change                                       | Force rebuild from Render → service → Manual Deploy → Clear build cache & deploy          |
 

@@ -8,10 +8,11 @@ Thumbs.db
 *.swp
 *.swo
 
-# Env
+# Env files (any variant)
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.*.example
+!.env.example
 
 # Logs
 *.log
@@ -22,3 +23,29 @@ yarn-error.log*
 # Local Claude Code overrides (project-shared settings remain tracked)
 .claude/settings.local.json
 .claude/.cache/
+
+# ----- Secrets / credentials --------------------------------------------------
+# Anything that smells like a credential note. Patterns are deliberately broad
+# because one accidental `git add .` of a file like "TiDB Config.txt" leaks a
+# DB password forever in git history.
+TiDB Config.txt
+*Config.txt
+*config.txt
+*-secrets.*
+secrets/
+credentials/
+*.pem
+*.key
+*.p12
+*.pfx
+*.kdbx
+service-account*.json
+
+# ----- Build artefacts (also covered by sub-project gitignores, belt+braces) --
+**/target/
+**/node_modules/
+**/.next/
+**/.turbo/
+
+# ----- Runtime data -----------------------------------------------------------
+var/
