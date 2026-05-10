@@ -10,6 +10,7 @@ import { useFavoritesStore } from "@/store/favorites";
 import { useDownloadsStore } from "@/store/downloads";
 import { usePapersStore } from "@/store/papers";
 import { useLocaleStore } from "@/store/locale";
+import { useThemeStore } from "@/store/theme";
 import TopBar from "@/components/TopBar";
 import Sidebar from "@/components/Sidebar";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -50,12 +51,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const papersTopic = usePapersStore((s) => s.topic);
 
   const hydrateLocale = useLocaleStore((s) => s.hydrate);
+  const hydrateTheme = useThemeStore((s) => s.hydrate);
 
-  // Hydrate auth + locale from localStorage on mount.
+  // Hydrate auth + locale + theme from localStorage on mount.
   useEffect(() => {
     hydrate();
     hydrateLocale();
-  }, [hydrate, hydrateLocale]);
+    hydrateTheme();
+  }, [hydrate, hydrateLocale, hydrateTheme]);
 
   // Auth guard.
   useEffect(() => {

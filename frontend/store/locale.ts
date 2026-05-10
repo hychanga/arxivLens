@@ -2,9 +2,9 @@
 
 import { create } from "zustand";
 
-export type Locale = "en" | "zh-TW" | "zh-CN" | "ja";
+export type Locale = "en" | "zh-TW" | "zh-CN" | "ja" | "de";
 
-export const SUPPORTED_LOCALES: Locale[] = ["en", "zh-TW", "zh-CN", "ja"];
+export const SUPPORTED_LOCALES: Locale[] = ["en", "zh-TW", "zh-CN", "ja", "de"];
 
 const STORAGE_KEY = "arxivlens.locale";
 

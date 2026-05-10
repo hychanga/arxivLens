@@ -8,6 +8,7 @@ import { usePreferencesStore } from "@/store/preferences";
 import { useUiStore } from "@/store/ui";
 import { useT } from "@/lib/i18n";
 import LocaleSelector from "./LocaleSelector";
+import ThemeToggle from "./ThemeToggle";
 import type { Source } from "@/types";
 
 export default function TopBar() {
@@ -122,6 +123,7 @@ export default function TopBar() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
+          <ThemeToggle />
           <LocaleSelector />
           {user && (
             <span className="hidden sm:inline-flex items-center text-sm text-zinc-600 dark:text-zinc-300">

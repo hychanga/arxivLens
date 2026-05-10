@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Class-based dark mode: any element with `.dark` on itself or an ancestor
+ * activates `dark:*` utilities. The `<html>` tag toggles this class via the
+ * theme store, with an inline anti-flash script in app/layout.tsx setting it
+ * synchronously before paint. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -12,11 +18,9 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
 }
 
 body {
