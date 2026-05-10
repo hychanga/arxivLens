@@ -14,7 +14,12 @@ services:
     name: arxivlens-backend
     runtime: docker
     plan: free                 # 512 MB RAM, sleeps after 15 min idle
-    region: singapore          # closest to TW; pick another if your DB is elsewhere
+    # Originally set to `singapore` for low DB latency, but Render's Singapore
+    # egress IP is flagged by Google's Gemini geo-IP filter (FAILED_PRECONDITION
+    # "User location is not supported"). Oregon is reliably supported. The DB
+    # round-trip from Oregon → TiDB Singapore is +~150 ms per query, acceptable
+    # for hobby use; move TiDB to AWS us-west-2 if you want it consistent.
+    region: oregon
     rootDir: backend
     dockerfilePath: ./Dockerfile
     healthCheckPath: /actuator/health
