@@ -1,6 +1,9 @@
 package com.arxivlens.bootstrap;
 
 import com.arxivlens.dto.SyncDtos.SyncResult;
+import com.arxivlens.entity.Source;
+import com.arxivlens.repository.PaperRepository;
+import com.arxivlens.repository.SourceRepository;
 import com.arxivlens.service.sync.SyncDispatcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,10 +36,23 @@ public class StartupSyncRunner implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(StartupSyncRunner.class);
 
-    private final SyncDispatcher dispatcher;
+    /**
+     * If a source has fewer than this many rows, regular sync alone can't fill out
+     * 12 monthly Trends buckets — kick off a backfill on first boot. Stays above the
+     * default {@code maxResultsPerSync} (50) so a freshly-synced source still
+     * triggers backfill, but well below what one full backfill produces (typically
+     * 1000–2000), so it doesn't fire on every cold start.
+     */
+    private static final long BACKFILL_THRESHOLD = 300L;
 
-    public StartupSyncRunner(SyncDispatcher dispatcher) {
+    private final SyncDispatcher dispatcher;
+    private final SourceRepository sources;
+    private final PaperRepository papers;
+
+    public StartupSyncRunner(SyncDispatcher dispatcher, SourceRepository sources, PaperRepository papers) {
         this.dispatcher = dispatcher;
+        this.sources = sources;
+        this.papers = papers;
     }
 
     @Override
@@ -57,8 +73,45 @@ public class StartupSyncRunner implements ApplicationRunner {
                 }
             }
             log.info("Initial sync: done");
+
+            maybeBackfill();
         } catch (Exception e) {
             log.warn("Initial sync failed (server is up; user can hit Sync now manually)", e);
+        }
+    }
+
+    /**
+     * Self-heals an empty / shallow DB: if any enabled source has fewer than
+     * {@link #BACKFILL_THRESHOLD} papers, runs a 12-month backfill so Trends has
+     * meaningful per-month data without the admin needing to push a button.
+     * After one successful backfill the row count comfortably exceeds the
+     * threshold and subsequent restarts skip this path.
+     */
+    private void maybeBackfill() {
+        try {
+            List<Source> enabled = sources.findByEnabledTrueOrderByDisplayOrderAsc();
+            boolean any = false;
+            for (Source s : enabled) {
+                long count = papers.countBySourceId(s.getId());
+                if (count < BACKFILL_THRESHOLD) {
+                    any = true;
+                    log.info("Source [{}] has {} papers (< {}); triggering 12-month backfill",
+                            s.getCode(), count, BACKFILL_THRESHOLD);
+                    break;
+                }
+            }
+            if (!any) return;
+            List<SyncResult> results = dispatcher.backfillAllEnabled(12);
+            for (SyncResult r : results) {
+                if (r.error() != null) {
+                    log.warn("Backfill [{}] error: {}", r.sourceCode(), r.error());
+                } else {
+                    log.info("Backfill [{}] fetched={} inserted={} skipped={}",
+                            r.sourceCode(), r.fetched(), r.inserted(), r.skipped());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Auto-backfill failed (admin can still POST /api/admin/backfill)", e);
         }
     }
 }

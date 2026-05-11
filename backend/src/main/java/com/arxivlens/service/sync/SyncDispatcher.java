@@ -46,4 +46,19 @@ public class SyncDispatcher {
                 })
                 .toList();
     }
+
+    /**
+     * Calls {@link SourceSyncService#backfill(int)} on every enabled source.
+     * Used both by the admin "Backfill" action and by {@code StartupSyncRunner}
+     * when a source's row count is too low to populate Trends meaningfully.
+     */
+    public List<SyncResult> backfillAllEnabled(int months) {
+        return sources.findByEnabledTrueOrderByDisplayOrderAsc().stream()
+                .map(s -> {
+                    SourceSyncService svc = byCode.get(s.getCode());
+                    if (svc == null) return new SyncResult(s.getCode(), 0, 0, 0, "no handler");
+                    return svc.backfill(months);
+                })
+                .toList();
+    }
 }

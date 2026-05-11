@@ -9,4 +9,19 @@ public interface SourceSyncService {
 
     /** Fetches & upserts papers. Never throws — wraps any error in {@link SyncResult#error()}. */
     SyncResult sync();
+
+    /**
+     * Historical backfill so {@code /trends} can show data spanning {@code months}
+     * months instead of just whatever the last regular {@link #sync()} brought in
+     * (which is capped at the source's "max results per sync" setting and is
+     * always the newest entries — useless for monthly trend buckets that need
+     * older months populated).
+     *
+     * <p>Default impl is the same as {@link #sync()} — sources without paginated
+     * history APIs (HBR's RSS, for example) simply don't have older data to fetch.
+     * Override when the source supports pagination + date filtering.
+     */
+    default SyncResult backfill(int months) {
+        return sync();
+    }
 }

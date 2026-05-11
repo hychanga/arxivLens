@@ -31,6 +31,7 @@ export default function AdminPage() {
 
   const [settings, setSettings] = useState<Settings | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
   const [newTopic, setNewTopic] = useState({ code: "", name: "" });
 
   useEffect(() => {
@@ -83,6 +84,26 @@ export default function AdminPage() {
       flash(`Cleared ${r.removed} papers`, "success");
     } catch (e) {
       flash(e instanceof Error ? e.message : "Clear failed", "error");
+    }
+  }
+
+  async function backfillAll() {
+    setBackfilling(true);
+    try {
+      const results = await apiFetch<SyncResult[]>("/admin/backfill?months=12", { method: "POST" });
+      const totalInserted = results.reduce((s, r) => s + r.inserted, 0);
+      const totalSkipped = results.reduce((s, r) => s + r.skipped, 0);
+      const firstError = results.find((r) => r.error)?.error;
+      flash(
+        firstError
+          ? `Backfill error: ${firstError}`
+          : `Backfilled — ${totalInserted} new, ${totalSkipped} skipped`,
+        firstError ? "error" : "success"
+      );
+    } catch (e) {
+      flash(e instanceof Error ? e.message : "Backfill failed", "error");
+    } finally {
+      setBackfilling(false);
     }
   }
 
@@ -193,7 +214,18 @@ export default function AdminPage() {
 
       {/* Sources */}
       <section className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 space-y-3">
-        <h2 className="font-semibold">{t("admin.data_sources")}</h2>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <h2 className="font-semibold">{t("admin.data_sources")}</h2>
+          <button
+            onClick={backfillAll}
+            disabled={backfilling || syncing}
+            title={t("admin.backfill_hint")}
+            className="rounded bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 text-white px-3 py-1 text-xs hover:opacity-90 disabled:opacity-50"
+          >
+            {backfilling ? t("admin.backfilling") : t("admin.backfill_12mo")}
+          </button>
+        </div>
+        <p className="text-xs text-zinc-500">{t("admin.backfill_hint")}</p>
         <ul className="space-y-1">
           {sources.map((s) => (
             <li key={s.id} className="flex items-center gap-3 text-sm py-1">

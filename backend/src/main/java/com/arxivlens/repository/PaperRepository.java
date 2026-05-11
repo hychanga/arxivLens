@@ -15,6 +15,8 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
 
     Optional<Paper> findBySourceIdAndExternalId(Long sourceId, String externalId);
 
+    long countBySourceId(Long sourceId);
+
     @Query("""
             SELECT p FROM Paper p
             WHERE p.sourceId = :sourceId
