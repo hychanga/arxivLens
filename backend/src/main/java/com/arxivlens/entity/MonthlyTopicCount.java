@@ -61,7 +61,14 @@ public class MonthlyTopicCount {
     @Column(name = "month_key", nullable = false, length = 7)
     private String yearMonth;
 
-    @Column(nullable = false)
+    /**
+     * DB column is {@code paper_count} — TiDB reserves {@code COUNT} (the
+     * aggregate function name) as a keyword and Hibernate emits identifiers
+     * unquoted by default, which makes {@code CREATE TABLE … count BIGINT}
+     * fail silently. Renaming the column avoids the collision; the Java field
+     * stays {@code count} so all the call sites read naturally.
+     */
+    @Column(name = "paper_count", nullable = false)
     private Long count;
 
     @UpdateTimestamp
