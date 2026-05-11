@@ -5,6 +5,8 @@ import com.arxivlens.dto.TrendDtos.MonthCount;
 import com.arxivlens.dto.TrendDtos.Metrics;
 import com.arxivlens.dto.TrendDtos.TopicBreakdown;
 import com.arxivlens.dto.TrendDtos.TrendsResponse;
+import com.arxivlens.entity.MonthlyTopicCount;
+import com.arxivlens.repository.MonthlyTopicCountRepository;
 import com.arxivlens.repository.PaperRepository;
 import com.arxivlens.repository.SourceRepository;
 import com.arxivlens.web.ApiException;
@@ -29,10 +31,12 @@ public class TrendService {
 
     private final PaperRepository papers;
     private final SourceRepository sources;
+    private final MonthlyTopicCountRepository monthlyCounts;
 
-    public TrendService(PaperRepository papers, SourceRepository sources) {
+    public TrendService(PaperRepository papers, SourceRepository sources, MonthlyTopicCountRepository monthlyCounts) {
         this.papers = papers;
         this.sources = sources;
+        this.monthlyCounts = monthlyCounts;
     }
 
     @Transactional(readOnly = true)
@@ -41,19 +45,32 @@ public class TrendService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Unknown source: " + sourceCode))
                 .getId();
 
-        Instant since = Instant.now().minus(365, ChronoUnit.DAYS);
-        List<Object[]> rows = papers.aggregateMonthlyByTopic(sourceId, since);
+        // Primary path: real per-(topic, month) totals harvested from arXiv's
+        // opensearch:totalResults. Populated by ArxivSyncService.backfill.
+        List<MonthlyTopicCount> rows = monthlyCounts.findBySourceId(sourceId);
 
-        // Map<yearMonth, Map<topicCode, count>>
         TreeMap<String, Map<String, Long>> monthIndex = new TreeMap<>();
         Map<String, Long> totalsByTopic = new HashMap<>();
 
-        for (Object[] r : rows) {
-            String topic = r[0] == null ? "(uncategorized)" : r[0].toString();
-            String ym = r[1].toString();
-            long count = ((Number) r[2]).longValue();
-            monthIndex.computeIfAbsent(ym, k -> new LinkedHashMap<>()).merge(topic, count, Long::sum);
-            totalsByTopic.merge(topic, count, Long::sum);
+        if (!rows.isEmpty()) {
+            for (MonthlyTopicCount r : rows) {
+                if (r.getCount() == null || r.getCount() == 0L) continue;
+                monthIndex.computeIfAbsent(r.getYearMonth(), k -> new LinkedHashMap<>())
+                        .merge(r.getTopicCode(), r.getCount(), Long::sum);
+                totalsByTopic.merge(r.getTopicCode(), r.getCount(), Long::sum);
+            }
+        } else {
+            // Fallback (no backfill has run yet): aggregate stored Paper rows.
+            // Less accurate — biased by max_results_per_sync — but better than empty.
+            Instant since = Instant.now().minus(365, ChronoUnit.DAYS);
+            List<Object[]> aggRows = papers.aggregateMonthlyByTopic(sourceId, since);
+            for (Object[] r : aggRows) {
+                String topic = r[0] == null ? "(uncategorized)" : r[0].toString();
+                String ym = r[1].toString();
+                long count = ((Number) r[2]).longValue();
+                monthIndex.computeIfAbsent(ym, k -> new LinkedHashMap<>()).merge(topic, count, Long::sum);
+                totalsByTopic.merge(topic, count, Long::sum);
+            }
         }
 
         // Build full 12-month series so the chart x-axis is regular.
