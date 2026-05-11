@@ -24,4 +24,14 @@ public interface SourceSyncService {
     default SyncResult backfill(int months) {
         return sync();
     }
+
+    /**
+     * Whether {@link #backfill(int)} actually reaches further back than {@link #sync()}.
+     * Used by {@code StartupSyncRunner} to decide whether re-triggering backfill on
+     * a shallow source could ever help — for HBR (RSS-only) it can't, so the auto-trigger
+     * skips it and avoids re-running every boot.
+     */
+    default boolean supportsBackfill() {
+        return false;
+    }
 }

@@ -31,6 +31,12 @@ public class SyncDispatcher {
         return svc.sync();
     }
 
+    /** Whether the handler for {@code code} can reach further back than {@link SourceSyncService#sync()}. */
+    public boolean supportsBackfill(String code) {
+        SourceSyncService svc = byCode.get(code);
+        return svc != null && svc.supportsBackfill();
+    }
+
     public SyncResult syncById(Long sourceId) {
         Source s = sources.findById(sourceId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Source not found"));

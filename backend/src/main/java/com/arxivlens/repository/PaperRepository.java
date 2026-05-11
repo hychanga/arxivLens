@@ -17,6 +17,14 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
 
     long countBySourceId(Long sourceId);
 
+    /**
+     * Oldest {@code publishedAt} for the source — used by {@code StartupSyncRunner}
+     * to detect "shallow" datasets (only the last few days exist) that need a backfill
+     * even though row count alone looks healthy.
+     */
+    @Query("SELECT MIN(p.publishedAt) FROM Paper p WHERE p.sourceId = :sourceId")
+    Optional<Instant> findOldestPublishedAtBySourceId(@Param("sourceId") Long sourceId);
+
     @Query("""
             SELECT p FROM Paper p
             WHERE p.sourceId = :sourceId

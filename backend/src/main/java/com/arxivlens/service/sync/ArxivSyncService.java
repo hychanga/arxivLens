@@ -27,7 +27,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
-import java.time.temporal.ChronoUnit;
+import java.time.YearMonth;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -99,15 +101,20 @@ public class ArxivSyncService implements SourceSyncService {
     }
 
     /**
-     * Historical backfill: pages through arXiv (200 entries per page, sorted by
-     * {@code submittedDate} desc) until the oldest entry on a page is older than
-     * {@code months} months, or we reach {@link #BACKFILL_HARD_CAP} parsed
-     * entries — whichever comes first. The 3-second pause between pages honors
-     * arXiv's polite-use guidance.
+     * Historical backfill — one query per calendar month with a
+     * {@code submittedDate:[start TO end]} range filter, so each of the last
+     * {@code months} buckets receives data even when the source is a firehose.
      *
-     * <p>Runs in its own transaction: the loop can take 30–60s and we want each
-     * page's upserts to be visible before the next page is fetched (so an
-     * interrupted backfill still leaves persisted progress).
+     * <p>Why per-month and not "page through firehose": cs.* categories receive
+     * 50–100 submissions/day each, so 5 enabled topics × ~400/day means a
+     * naive {@code start=0, 200, 400, ...} loop bottoms out after a few
+     * thousand entries that all live within the last week. Trends needs older
+     * buckets populated, which only the date-range filter guarantees.
+     *
+     * <p>Each month is capped at {@link #BACKFILL_PER_MONTH} so dense months
+     * don't dominate; for a 12-month backfill that's ≤2400 inserts total. The
+     * 3-second pause between requests honors arXiv's polite-use guidance.
+     * Total wall time ≈ {@code months × ~5s} (~60s for 12 months).
      */
     @Override
     public SyncResult backfill(int months) {
@@ -123,33 +130,35 @@ public class ArxivSyncService implements SourceSyncService {
             return new SyncResult(sourceCode(), 0, 0, 0, "no enabled topics");
         }
 
-        String search = buildSearchExpr(activeTopics);
-        Instant cutoff = Instant.now().minus(Math.max(1, months) * 31L, ChronoUnit.DAYS);
+        String topicExpr = "(" + buildSearchExpr(activeTopics) + ")";
+        YearMonth current = YearMonth.now(ZoneOffset.UTC);
 
         int totalParsed = 0, totalInserted = 0, totalSkipped = 0;
         StringBuilder errors = new StringBuilder();
 
-        for (int start = 0; totalParsed < BACKFILL_HARD_CAP; start += BACKFILL_PAGE_SIZE) {
+        for (int back = 0; back < Math.max(1, months); back++) {
+            YearMonth target = current.minusMonths(back);
+            String start = target.atDay(1).format(YYYYMMDD) + "0000";
+            String end = target.atEndOfMonth().format(YYYYMMDD) + "2359";
+            // %5B / %5D = url-encoded brackets; raw [ ] is rejected by HttpClient's URI parser.
+            String monthQuery = topicExpr + "+AND+submittedDate:%5B" + start + "+TO+" + end + "%5D";
+
             List<Paper> parsed;
             try {
-                parsed = fetchPage(search, start, BACKFILL_PAGE_SIZE, src.getId());
+                parsed = fetchPage(monthQuery, 0, BACKFILL_PER_MONTH, src.getId());
             } catch (Exception ex) {
-                log.warn("arXiv backfill page start={} failed: {}", start, ex.getMessage());
+                log.warn("arXiv backfill month {} failed: {}", target, ex.getMessage());
                 if (errors.length() > 0) errors.append("; ");
-                errors.append("start=").append(start).append(": ").append(ex.getClass().getSimpleName());
-                break;
+                errors.append(target).append(": ").append(ex.getClass().getSimpleName());
+                continue;
             }
-            if (parsed.isEmpty()) break;
 
             totalParsed += parsed.size();
             int[] counts = upsertEachInOwnTx(parsed, src);
             totalInserted += counts[0];
             totalSkipped += counts[1];
-
-            // Once the oldest entry on this page predates the cutoff, going further
-            // back is wasted bandwidth.
-            Instant oldest = parsed.stream().map(Paper::getPublishedAt).min(Instant::compareTo).orElse(null);
-            if (oldest != null && oldest.isBefore(cutoff)) break;
+            log.info("arXiv backfill {} → parsed={} inserted={} skipped={}",
+                    target, parsed.size(), counts[0], counts[1]);
 
             // arXiv asks for >= 3s between programmatic requests.
             try {
@@ -165,9 +174,14 @@ public class ArxivSyncService implements SourceSyncService {
         return new SyncResult(sourceCode(), totalParsed, totalInserted, totalSkipped, err);
     }
 
-    private static final int BACKFILL_PAGE_SIZE = 200;
-    /** Safety cap so a misconfigured backfill can't run forever. ~10 pages × 200. */
-    private static final int BACKFILL_HARD_CAP = 2000;
+    @Override
+    public boolean supportsBackfill() {
+        return true;
+    }
+
+    /** Per-month cap. Dense categories (cs.AI ≈ 2000/mo) get sampled rather than fully ingested. */
+    private static final int BACKFILL_PER_MONTH = 200;
+    private static final DateTimeFormatter YYYYMMDD = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private static String buildSearchExpr(List<Topic> activeTopics) {
         return activeTopics.stream()

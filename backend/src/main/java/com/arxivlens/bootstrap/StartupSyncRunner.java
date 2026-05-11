@@ -12,7 +12,10 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -37,13 +40,18 @@ public class StartupSyncRunner implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(StartupSyncRunner.class);
 
     /**
-     * If a source has fewer than this many rows, regular sync alone can't fill out
-     * 12 monthly Trends buckets — kick off a backfill on first boot. Stays above the
-     * default {@code maxResultsPerSync} (50) so a freshly-synced source still
-     * triggers backfill, but well below what one full backfill produces (typically
-     * 1000–2000), so it doesn't fire on every cold start.
+     * Consider a source "shallow" — and therefore needing a backfill — if either
+     * <ul>
+     *   <li>row count is below this value (a fresh deploy that's only seen one sync), or</li>
+     *   <li>the oldest row is younger than {@link #SHALLOW_SPAN_DAYS} days (a deeper-but-
+     *       still-narrow dataset, e.g. one that was hit with the old firehose-paginated
+     *       backfill which only reached back a few days).</li>
+     * </ul>
+     * Either condition alone is enough — the span check catches DBs that already
+     * have plenty of rows but no historical breadth, which the count check alone misses.
      */
-    private static final long BACKFILL_THRESHOLD = 300L;
+    private static final long SHALLOW_COUNT = 300L;
+    private static final long SHALLOW_SPAN_DAYS = 180L;
 
     private final SyncDispatcher dispatcher;
     private final SourceRepository sources;
@@ -81,22 +89,29 @@ public class StartupSyncRunner implements ApplicationRunner {
     }
 
     /**
-     * Self-heals an empty / shallow DB: if any enabled source has fewer than
-     * {@link #BACKFILL_THRESHOLD} papers, runs a 12-month backfill so Trends has
+     * Self-heals an empty / shallow DB: if any backfill-capable source has too
+     * few rows or too short a span, runs a 12-month backfill so Trends has
      * meaningful per-month data without the admin needing to push a button.
-     * After one successful backfill the row count comfortably exceeds the
-     * threshold and subsequent restarts skip this path.
+     *
+     * <p>Only looks at sources whose handler {@link com.arxivlens.service.sync.SourceSyncService#supportsBackfill() supports backfill}
+     * (i.e. arXiv). HBR's RSS feed has no historical depth, so its row count
+     * will always be "shallow" — checking it would re-trigger the loop every boot.
      */
     private void maybeBackfill() {
         try {
+            Instant spanCutoff = Instant.now().minus(SHALLOW_SPAN_DAYS, ChronoUnit.DAYS);
             List<Source> enabled = sources.findByEnabledTrueOrderByDisplayOrderAsc();
             boolean any = false;
             for (Source s : enabled) {
+                if (!dispatcher.supportsBackfill(s.getCode())) continue;
                 long count = papers.countBySourceId(s.getId());
-                if (count < BACKFILL_THRESHOLD) {
+                Optional<Instant> oldest = papers.findOldestPublishedAtBySourceId(s.getId());
+                boolean countShallow = count < SHALLOW_COUNT;
+                boolean spanShallow = oldest.map(o -> o.isAfter(spanCutoff)).orElse(true);
+                if (countShallow || spanShallow) {
                     any = true;
-                    log.info("Source [{}] has {} papers (< {}); triggering 12-month backfill",
-                            s.getCode(), count, BACKFILL_THRESHOLD);
+                    log.info("Source [{}] is shallow (count={}, oldest={}); triggering 12-month backfill",
+                            s.getCode(), count, oldest.map(Instant::toString).orElse("none"));
                     break;
                 }
             }
