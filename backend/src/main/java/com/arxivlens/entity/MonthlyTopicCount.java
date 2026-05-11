@@ -32,7 +32,7 @@ import java.time.Instant;
     name = "monthly_topic_counts",
     uniqueConstraints = @UniqueConstraint(
         name = "uk_mtc_source_topic_month",
-        columnNames = {"source_id", "topic_code", "year_month"}
+        columnNames = {"source_id", "topic_code", "month_key"}
     )
 )
 @Getter
@@ -50,8 +50,15 @@ public class MonthlyTopicCount {
     @Column(name = "topic_code", nullable = false, length = 64)
     private String topicCode;
 
-    /** ISO month, "YYYY-MM". */
-    @Column(name = "year_month", nullable = false, length = 7)
+    /**
+     * ISO month, "YYYY-MM". DB column is {@code month_key} rather than the
+     * obvious {@code year_month} because {@code YEAR_MONTH} is a MySQL/TiDB
+     * reserved keyword (used in {@code INTERVAL ... YEAR_MONTH} syntax) and
+     * Hibernate doesn't quote identifiers unless told to — leaving it unquoted
+     * causes {@code CREATE TABLE} to fail silently, so the table never exists
+     * and every query against it throws {@code Table doesn't exist}.
+     */
+    @Column(name = "month_key", nullable = false, length = 7)
     private String yearMonth;
 
     @Column(nullable = false)
