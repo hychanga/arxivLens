@@ -41,6 +41,16 @@ public class SchemaBootstrap {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """;
 
+    /**
+     * Legacy column names that previous schemas used (and that
+     * {@code ddl-auto=update} never drops, by design). When a fresh
+     * {@code @Column(name="…")} renames a field, Hibernate ALTERs the table to
+     * ADD the new column but leaves the old column in place — and if the old
+     * column was {@code NOT NULL} with no default, every INSERT after the rename
+     * fails with {@code "Field 'X' doesn't have a default value"}.
+     */
+    private static final String[] LEGACY_DROPPABLE_COLUMNS = {"count", "year_month"};
+
     private final JdbcTemplate jdbc;
 
     public SchemaBootstrap(JdbcTemplate jdbc) {
@@ -57,6 +67,33 @@ public class SchemaBootstrap {
             // but let the rest of the app come up. /trends will fall back to its
             // Paper-aggregate path until this is resolved.
             log.error("Schema bootstrap failed to create monthly_topic_counts: {}", e.getMessage(), e);
+            return;
+        }
+
+        for (String col : LEGACY_DROPPABLE_COLUMNS) {
+            dropColumnIfExists("monthly_topic_counts", col);
+        }
+    }
+
+    /**
+     * Idempotent drop of a no-longer-mapped column. Uses INFORMATION_SCHEMA to
+     * detect presence so we don't rely on {@code DROP COLUMN IF EXISTS} (which
+     * MySQL gained only in 8.0.29 and which TiDB's compat support is uneven on).
+     * Backticks the column name because both candidates here are reserved
+     * keywords in MySQL/TiDB.
+     */
+    private void dropColumnIfExists(String table, String column) {
+        try {
+            Integer present = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS "
+                            + "WHERE TABLE_SCHEMA = DATABASE() "
+                            + "AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+                    Integer.class, table, column);
+            if (present == null || present == 0) return;
+            jdbc.execute("ALTER TABLE " + table + " DROP COLUMN `" + column + "`");
+            log.info("Schema bootstrap: dropped legacy column {}.{}", table, column);
+        } catch (Exception e) {
+            log.warn("Schema bootstrap: could not drop {}.{} — {}", table, column, e.getMessage());
         }
     }
 }
