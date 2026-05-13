@@ -21,6 +21,8 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, displayName: string) => Promise<void>;
   oauthLogin: (provider: OAuthProvider) => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
+  resetPassword: (token: string, password: string) => Promise<void>;
   logout: () => void;
   hydrate: () => void;
 }
@@ -103,6 +105,24 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ status: "anon", error: e instanceof Error ? e.message : `${provider} sign-in failed` });
       throw e;
     }
+  },
+
+  requestPasswordReset: async (email) => {
+    // Backend returns 204 regardless of whether the email is registered
+    // (anti-enumeration). We surface the same outcome to the UI.
+    await apiFetch<void>("/auth/forgot-password", {
+      method: "POST",
+      body: { email },
+      auth: false,
+    });
+  },
+
+  resetPassword: async (token, password) => {
+    await apiFetch<void>("/auth/reset-password", {
+      method: "POST",
+      body: { token, password },
+      auth: false,
+    });
   },
 
   logout: () => {

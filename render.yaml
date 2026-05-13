@@ -61,6 +61,27 @@ services:
       - key: APP_CORS_ALLOWED_ORIGINS
         sync: false           # https://arxivlens.vercel.app,https://arxivlens-*.vercel.app
 
+      # Public frontend URL — used to build the password-reset link in emails.
+      # Set this AFTER Vercel deploys; should match your production domain exactly.
+      - key: APP_FRONTEND_BASE_URL
+        sync: false           # e.g. https://arxivlens.vercel.app
+
+      # SMTP credentials for password-reset email. Leave unset to disable — the
+      # forgot-password endpoint still returns 200 (anti-enumeration) but the
+      # reset link is logged to Render logs instead of sent. For Gmail: host
+      # smtp.gmail.com, username = your gmail, password = an App Password
+      # (https://myaccount.google.com/apppasswords), not your account password.
+      - key: MAIL_HOST
+        sync: false
+      - key: MAIL_PORT
+        value: "587"
+      - key: MAIL_USERNAME
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: MAIL_FROM
+        sync: false           # e.g. arxivLens <noreply@yourdomain.com>
+
       # Toggle scheduler if you want to throttle outbound API usage on cold starts.
       - key: SCHEDULER_ENABLED
         value: "true"

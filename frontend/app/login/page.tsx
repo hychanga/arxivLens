@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useActionState, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { useLocaleStore } from "@/store/locale";
 import { useThemeStore } from "@/store/theme";
@@ -9,14 +9,16 @@ import { useT } from "@/lib/i18n";
 import LocaleSelector from "@/components/LocaleSelector";
 import ThemeToggle from "@/components/ThemeToggle";
 
-type Mode = "login" | "register";
+type Mode = "login" | "register" | "forgot";
 
 interface FormState {
   ok: boolean;
+  /** Set on a successful forgot-password submission. Used to render the "check your email" message. */
+  forgotSent: boolean;
   error: string | null;
 }
 
-const INITIAL_STATE: FormState = { ok: false, error: null };
+const INITIAL_STATE: FormState = { ok: false, forgotSent: false, error: null };
 
 /**
  * React 19 client action — runs on form submit. Pulls fields from FormData,
@@ -29,25 +31,45 @@ async function submitAuth(_prev: FormState, formData: FormData): Promise<FormSta
   const password = String(formData.get("password") ?? "");
   const displayName = String(formData.get("displayName") ?? "").trim();
 
-  if (!email || !password) {
-    return { ok: false, error: "Email and password are required" };
+  if (!email) {
+    return { ok: false, forgotSent: false, error: "Email is required" };
+  }
+  if (mode !== "forgot" && !password) {
+    return { ok: false, forgotSent: false, error: "Password is required" };
   }
 
   try {
     const store = useAuthStore.getState();
     if (mode === "register") {
       await store.register(email, password, displayName);
+    } else if (mode === "forgot") {
+      await store.requestPasswordReset(email);
+      return { ok: false, forgotSent: true, error: null };
     } else {
       await store.login(email, password);
     }
-    return { ok: true, error: null };
+    return { ok: true, forgotSent: false, error: null };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Authentication failed" };
+    return {
+      ok: false,
+      forgotSent: false,
+      error: err instanceof Error ? err.message : "Authentication failed",
+    };
   }
 }
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageInner />
+    </Suspense>
+  );
+}
+
+function LoginPageInner() {
   const router = useRouter();
+  const params = useSearchParams();
+  const justReset = params.get("reset") === "ok";
   const hydrate = useAuthStore((s) => s.hydrate);
   const hydrateLocale = useLocaleStore((s) => s.hydrate);
   const hydrateTheme = useThemeStore((s) => s.hydrate);
@@ -92,13 +114,25 @@ export default function LoginPage() {
       <div className="w-full max-w-md rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 sm:p-8 shadow-sm">
         <h1 className="text-2xl font-semibold tracking-tight">arxivLens</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          {mode === "login" ? t("login.heading_signin") : t("login.heading_register")}
+          {mode === "login"
+            ? t("login.heading_signin")
+            : mode === "register"
+            ? t("login.heading_register")
+            : t("login.forgot_heading")}
         </p>
 
-        <div role="tablist" aria-label="Auth mode" className="mt-6 flex gap-2 text-sm">
-          <ModeTab id="login"    current={mode} setMode={setMode} label={t("login.tab_login")} />
-          <ModeTab id="register" current={mode} setMode={setMode} label={t("login.tab_register")} />
-        </div>
+        {justReset && mode === "login" && (
+          <p role="status" className="mt-4 text-sm text-green-700 dark:text-green-400">
+            {t("reset.success")}
+          </p>
+        )}
+
+        {mode !== "forgot" && (
+          <div role="tablist" aria-label="Auth mode" className="mt-6 flex gap-2 text-sm">
+            <ModeTab id="login"    current={mode} setMode={setMode} label={t("login.tab_login")} />
+            <ModeTab id="register" current={mode} setMode={setMode} label={t("login.tab_register")} />
+          </div>
+        )}
 
         <form action={formAction} className="mt-5 space-y-4" aria-busy={pending}>
           <input type="hidden" name="mode" value={mode} />
@@ -106,19 +140,50 @@ export default function LoginPage() {
           {mode === "register" && (
             <Field name="displayName" type="text" label={t("login.display_name")} autoComplete="name" />
           )}
-          <Field name="email" type="email" label={t("login.email")} required defaultValue="demo@arxivlens.local" autoComplete="email" />
           <Field
-            name="password"
-            type="password"
-            label={t("login.password")}
+            name="email"
+            type="email"
+            label={t("login.email")}
             required
-            defaultValue="demo123"
-            minLength={mode === "register" ? 8 : undefined}
-            autoComplete={mode === "register" ? "new-password" : "current-password"}
+            defaultValue={mode === "forgot" ? "" : "demo@arxivlens.local"}
+            autoComplete="email"
           />
+          {mode !== "forgot" && (
+            <Field
+              name="password"
+              type="password"
+              label={t("login.password")}
+              required
+              defaultValue="demo123"
+              minLength={mode === "register" ? 8 : undefined}
+              autoComplete={mode === "register" ? "new-password" : "current-password"}
+            />
+          )}
+
+          {mode === "login" && (
+            <div className="-mt-2 text-right">
+              <button
+                type="button"
+                onClick={() => setMode("forgot")}
+                className="text-xs text-blue-600 dark:text-blue-400 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+              >
+                {t("login.forgot_password")}
+              </button>
+            </div>
+          )}
+
+          {mode === "forgot" && (
+            <p className="text-xs text-zinc-500">{t("login.forgot_subtitle")}</p>
+          )}
 
           {state.error && (
             <p role="alert" className="text-sm text-red-600 dark:text-red-400">{state.error}</p>
+          )}
+
+          {state.forgotSent && mode === "forgot" && (
+            <p role="status" className="text-sm text-green-700 dark:text-green-400">
+              {t("login.forgot_sent")}
+            </p>
           )}
 
           <button
@@ -126,48 +191,68 @@ export default function LoginPage() {
             disabled={pending}
             className="w-full rounded-md bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 py-2 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
-            {pending ? t("login.please_wait") : mode === "login" ? t("login.signin") : t("login.create")}
+            {pending
+              ? t("login.please_wait")
+              : mode === "login"
+              ? t("login.signin")
+              : mode === "register"
+              ? t("login.create")
+              : t("login.forgot_send")}
           </button>
+
+          {mode === "forgot" && (
+            <button
+              type="button"
+              onClick={() => setMode("login")}
+              className="block w-full text-center text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+            >
+              {t("login.forgot_back")}
+            </button>
+          )}
         </form>
 
-        <div className="mt-6">
-          <div className="flex items-center gap-3 text-xs text-zinc-500">
-            <span aria-hidden className="flex-1 h-px bg-zinc-200 dark:bg-zinc-800" />
-            <span>{t("login.continue_with")}</span>
-            <span aria-hidden className="flex-1 h-px bg-zinc-200 dark:bg-zinc-800" />
+        {mode !== "forgot" && (
+          <div className="mt-6">
+            <div className="flex items-center gap-3 text-xs text-zinc-500">
+              <span aria-hidden className="flex-1 h-px bg-zinc-200 dark:bg-zinc-800" />
+              <span>{t("login.continue_with")}</span>
+              <span aria-hidden className="flex-1 h-px bg-zinc-200 dark:bg-zinc-800" />
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <OAuthButton
+                provider="google"
+                label={t("login.continue_google")}
+                busyLabel={t("login.connecting")}
+                busy={oauthBusy === "google"}
+                disabled={oauthBusy !== null || pending}
+                onClick={() => startOAuth("google")}
+              />
+              <OAuthButton
+                provider="apple"
+                label={t("login.continue_apple")}
+                busyLabel={t("login.connecting")}
+                busy={oauthBusy === "apple"}
+                disabled={oauthBusy !== null || pending}
+                onClick={() => startOAuth("apple")}
+              />
+            </div>
+
+            {oauthError && (
+              <p role="alert" className="mt-3 text-xs text-red-600 dark:text-red-400">{oauthError}</p>
+            )}
+
+            <p className="mt-3 text-[11px] text-zinc-400 dark:text-zinc-500">
+              {t("login.oauth_hint")}
+            </p>
           </div>
+        )}
 
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <OAuthButton
-              provider="google"
-              label={t("login.continue_google")}
-              busyLabel={t("login.connecting")}
-              busy={oauthBusy === "google"}
-              disabled={oauthBusy !== null || pending}
-              onClick={() => startOAuth("google")}
-            />
-            <OAuthButton
-              provider="apple"
-              label={t("login.continue_apple")}
-              busyLabel={t("login.connecting")}
-              busy={oauthBusy === "apple"}
-              disabled={oauthBusy !== null || pending}
-              onClick={() => startOAuth("apple")}
-            />
-          </div>
-
-          {oauthError && (
-            <p role="alert" className="mt-3 text-xs text-red-600 dark:text-red-400">{oauthError}</p>
-          )}
-
-          <p className="mt-3 text-[11px] text-zinc-400 dark:text-zinc-500">
-            {t("login.oauth_hint")}
+        {mode !== "forgot" && (
+          <p className="mt-6 text-xs text-zinc-500">
+            {t("login.demo_hint")} <code className="font-mono">demo@arxivlens.local</code> / <code className="font-mono">demo123</code>
           </p>
-        </div>
-
-        <p className="mt-6 text-xs text-zinc-500">
-          {t("login.demo_hint")} <code className="font-mono">demo@arxivlens.local</code> / <code className="font-mono">demo123</code>
-        </p>
+        )}
       </div>
     </main>
   );
