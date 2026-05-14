@@ -113,7 +113,7 @@ export default function AdminPage() {
       const r = await apiFetch<SyncResult>(`/papers/sync/${sourceId}`, { method: "POST" });
       flash(
         r.error
-          ? `Sync error: ${r.error}`
+          ? cleanSyncError(r.error)
           : `Synced — ${r.inserted} new, ${r.skipped} skipped`,
         r.error ? "error" : "success"
       );
@@ -122,6 +122,17 @@ export default function AdminPage() {
     } finally {
       setSyncing(false);
     }
+  }
+
+  /**
+   * Backend wraps errors as "IllegalStateException: <message>" via
+   * SyncResult.error. Strip the exception-class prefix so the toast reads
+   * cleanly; the original message text (which we now write to be admin-actionable,
+   * e.g. "arXiv rate-limit hit (HTTP 429). Wait ~1 minute…") is already what we want.
+   */
+  function cleanSyncError(raw: string): string {
+    const m = raw.match(/^[A-Za-z.$]+Exception:\s*(.+)$/);
+    return m ? m[1] : raw;
   }
 
   return (

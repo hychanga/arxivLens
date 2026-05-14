@@ -221,13 +221,12 @@ public class ArxivSyncService implements SourceSyncService {
                 + "&start=0&max_results=1";
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(url))
+                .header("User-Agent", USER_AGENT)
                 .timeout(Duration.ofSeconds(20))
                 .GET()
                 .build();
         HttpResponse<byte[]> res = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
-        if (res.statusCode() / 100 != 2) {
-            throw new IllegalStateException("HTTP " + res.statusCode());
-        }
+        checkArxivStatus(res.statusCode());
         return parseTotalResults(res.body());
     }
 
@@ -262,6 +261,13 @@ public class ArxivSyncService implements SourceSyncService {
                 .collect(Collectors.joining("+OR+"));
     }
 
+    /**
+     * arXiv asks that programmatic clients identify themselves so requests can be
+     * rate-limited per-app rather than per-IP. Anonymous requests share a global
+     * bucket — much easier to trip 429.
+     */
+    private static final String USER_AGENT = "arxivLens/0.1 (+https://arxivlens.vercel.app)";
+
     private List<Paper> fetchPage(String search, int start, int maxResults, Long sourceId) throws Exception {
         String url = "https://export.arxiv.org/api/query"
                 + "?search_query=" + search
@@ -270,14 +276,29 @@ public class ArxivSyncService implements SourceSyncService {
                 + "&sortBy=submittedDate&sortOrder=descending";
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(url))
+                .header("User-Agent", USER_AGENT)
                 .timeout(Duration.ofSeconds(20))
                 .GET()
                 .build();
         HttpResponse<byte[]> res = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
-        if (res.statusCode() / 100 != 2) {
-            throw new IllegalStateException("HTTP " + res.statusCode());
-        }
+        checkArxivStatus(res.statusCode());
         return parseAtom(res.body(), sourceId);
+    }
+
+    /**
+     * Distinguishes 429 (rate limit — recoverable, retry after a pause) from
+     * generic 4xx/5xx so the caller can surface a useful message to the admin
+     * instead of "HTTP 429" with no context.
+     */
+    private static void checkArxivStatus(int code) {
+        if (code == 429) {
+            throw new IllegalStateException(
+                    "arXiv rate-limit hit (HTTP 429). Wait ~1 minute then retry. "
+                            + "If this happens often, run Backfill less aggressively.");
+        }
+        if (code / 100 != 2) {
+            throw new IllegalStateException("HTTP " + code);
+        }
     }
 
     /** Upserts within the current transaction. Returns [inserted, skipped]. */
