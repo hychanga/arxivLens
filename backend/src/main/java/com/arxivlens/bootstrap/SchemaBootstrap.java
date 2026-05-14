@@ -41,6 +41,20 @@ public class SchemaBootstrap {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """;
 
+    private static final String CREATE_PASSWORD_RESET_TOKENS = """
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                id          BIGINT       NOT NULL AUTO_INCREMENT,
+                user_id     BIGINT       NOT NULL,
+                token_hash  VARCHAR(64)  NOT NULL,
+                expires_at  DATETIME(6)  NOT NULL,
+                used_at     DATETIME(6)  NULL,
+                created_at  DATETIME(6)  NOT NULL,
+                PRIMARY KEY (id),
+                UNIQUE KEY ix_prt_token_hash (token_hash),
+                KEY ix_prt_user_id (user_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """;
+
     /**
      * Legacy column names that previous schemas used (and that
      * {@code ddl-auto=update} never drops, by design). When a fresh
@@ -59,19 +73,28 @@ public class SchemaBootstrap {
 
     @PostConstruct
     public void ensureTables() {
-        try {
-            jdbc.execute(CREATE_MONTHLY_TOPIC_COUNTS);
-            log.info("Schema bootstrap: monthly_topic_counts is present");
-        } catch (Exception e) {
-            // Don't kill startup — log loudly so the admin can fix DDL privileges,
-            // but let the rest of the app come up. /trends will fall back to its
-            // Paper-aggregate path until this is resolved.
-            log.error("Schema bootstrap failed to create monthly_topic_counts: {}", e.getMessage(), e);
-            return;
+        boolean monthlyOk = createTable("monthly_topic_counts", CREATE_MONTHLY_TOPIC_COUNTS);
+        if (monthlyOk) {
+            for (String col : LEGACY_DROPPABLE_COLUMNS) {
+                dropColumnIfExists("monthly_topic_counts", col);
+            }
         }
+        createTable("password_reset_tokens", CREATE_PASSWORD_RESET_TOKENS);
+    }
 
-        for (String col : LEGACY_DROPPABLE_COLUMNS) {
-            dropColumnIfExists("monthly_topic_counts", col);
+    /**
+     * Idempotent {@code CREATE TABLE IF NOT EXISTS}. Failure is logged but
+     * doesn't kill startup — the dependent feature degrades, the rest of the
+     * app stays up.
+     */
+    private boolean createTable(String name, String ddl) {
+        try {
+            jdbc.execute(ddl);
+            log.info("Schema bootstrap: {} is present", name);
+            return true;
+        } catch (Exception e) {
+            log.error("Schema bootstrap failed to create {}: {}", name, e.getMessage(), e);
+            return false;
         }
     }
 
