@@ -22,10 +22,12 @@ public record AppProperties(
     public record Scheduler(String arxivCron, String hbrCron, boolean enabled) {}
 
     /**
-     * Outgoing-mail settings. {@code host} blank = email is logged rather than sent
-     * (handy for dev/CI without an SMTP credential).
+     * Outgoing-mail settings. EmailService prefers HTTP providers (Resend) over
+     * SMTP because PaaS hosts like Render block outbound SMTP ports for anti-abuse.
+     * Priority: {@code resendApiKey} set → Resend HTTP API; else {@code host} set
+     * → SMTP via Spring's JavaMailSender; else email is logged rather than sent.
      */
-    public record Mail(String host, String from) {}
+    public record Mail(String host, String from, String resendApiKey) {}
 
     /** Public URL the frontend is served from — used to build the reset-password link. */
     public record Frontend(String baseUrl) {}

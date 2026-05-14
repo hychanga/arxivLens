@@ -66,21 +66,32 @@ services:
       - key: APP_FRONTEND_BASE_URL
         sync: false           # e.g. https://arxivlens.vercel.app
 
-      # SMTP credentials for password-reset email. Leave unset to disable — the
-      # forgot-password endpoint still returns 200 (anti-enumeration) but the
-      # reset link is logged to Render logs instead of sent. For Gmail: host
-      # smtp.gmail.com, username = your gmail, password = an App Password
-      # (https://myaccount.google.com/apppasswords), not your account password.
+      # Outgoing email. Render Free blocks outbound SMTP (ports 25/465/587) for
+      # anti-abuse, so SMTP CANNOT deliver from here — only HTTP-based providers
+      # work. We use Resend (https://resend.com): free 3k emails/month.
+      #
+      # Steps:
+      #   1. Sign up at resend.com, create an API key.
+      #   2. Set RESEND_API_KEY below.
+      #   3. Leave MAIL_FROM empty for testing — it defaults to
+      #      "arxivLens <onboarding@resend.dev>", which Resend will deliver
+      #      ONLY to the email you registered with. To send to other recipients,
+      #      verify your own domain in Resend and put your address in MAIL_FROM.
+      #
+      # SMTP env vars below are kept for local dev convenience (where SMTP isn't
+      # blocked); leaving them unset on Render is correct.
+      - key: RESEND_API_KEY
+        sync: false           # re_xxxx… from resend.com
+      - key: MAIL_FROM
+        sync: false           # blank = onboarding@resend.dev (Resend dev sandbox)
       - key: MAIL_HOST
-        sync: false
+        sync: false           # leave unset on Render (SMTP blocked anyway)
       - key: MAIL_PORT
         value: "587"
       - key: MAIL_USERNAME
         sync: false
       - key: MAIL_PASSWORD
         sync: false
-      - key: MAIL_FROM
-        sync: false           # e.g. arxivLens <noreply@yourdomain.com>
 
       # Toggle scheduler if you want to throttle outbound API usage on cold starts.
       - key: SCHEDULER_ENABLED
