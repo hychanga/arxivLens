@@ -220,21 +220,18 @@ function LoginPageInner() {
               <span aria-hidden className="flex-1 h-px bg-zinc-200 dark:bg-zinc-800" />
             </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
-                // Real Google sign-in (GIS popup). The official button replaces
-                // our custom one because Google requires its own branding when
-                // GIS issues real tokens — and it handles the popup flow itself.
+            {/*
+              Hide the Google cell entirely when NEXT_PUBLIC_GOOGLE_CLIENT_ID
+              isn't baked into the build. Previously we showed the custom
+              mock button as a fallback — but the backend now strictly requires
+              a real ID token, so the fallback path 400'd silently with
+              "Missing Google ID token". A missing button is clearer than a
+              broken one: it signals that env-var setup is incomplete instead
+              of looking like a real auth feature.
+            */}
+            <div className={`mt-3 grid gap-2 ${process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? "grid-cols-2" : "grid-cols-1"}`}>
+              {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID && (
                 <GoogleSignInButton onError={setOauthError} />
-              ) : (
-                <OAuthButton
-                  provider="google"
-                  label={t("login.continue_google")}
-                  busyLabel={t("login.connecting")}
-                  busy={oauthBusy === "google"}
-                  disabled={oauthBusy !== null || pending}
-                  onClick={() => startOAuth("google")}
-                />
               )}
               <OAuthButton
                 provider="apple"
