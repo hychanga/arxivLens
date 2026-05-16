@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useUiStore } from "@/store/ui";
 import { useDownloadsStore } from "@/store/downloads";
 import { useLocaleStore } from "@/store/locale";
@@ -8,6 +8,7 @@ import { useTranslationsStore } from "@/store/translations";
 import { parseAuthors, fmtDate } from "@/lib/format";
 import { openCachedPdf } from "@/lib/pdf";
 import { useT } from "@/lib/i18n";
+import { detectLanguage, sameLanguageFamily } from "@/lib/lang";
 
 export default function PaperPreviewModal() {
   const preview = useUiStore((s) => s.preview);
@@ -28,6 +29,19 @@ export default function PaperPreviewModal() {
     paperId != null && s.loading.has(`${paperId}:${locale}`)
   );
 
+  // What language is the article actually in? Drives the Translate button's
+  // visibility — show it whenever the article isn't already in the user's UI
+  // language. A Chinese article viewed in an English UI now offers translation
+  // (the old rule only triggered for non-English UI, which missed this case
+  // entirely once we added pasted / imported foreign-language articles).
+  const articleLang = useMemo(() => {
+    if (!preview.paper) return "other" as const;
+    return detectLanguage(
+      `${preview.paper.title ?? ""} ${preview.paper.abstract ?? ""}`
+    );
+  }, [preview.paper]);
+  const needsTranslation = preview.paper != null && !sameLanguageFamily(articleLang, locale);
+
   useEffect(() => {
     if (!preview.open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -37,19 +51,19 @@ export default function PaperPreviewModal() {
     return () => window.removeEventListener("keydown", onKey);
   }, [preview.open, close]);
 
-  // Probe cache once whenever the modal opens onto a paper in a non-English locale.
+  // Probe cache once whenever the modal opens onto a paper that needs translation.
   useEffect(() => {
-    if (preview.open && paperId != null && locale !== "en") {
+    if (preview.open && paperId != null && needsTranslation) {
       void fetchCached(paperId, locale);
     }
-  }, [preview.open, paperId, locale, fetchCached]);
+  }, [preview.open, paperId, locale, needsTranslation, fetchCached]);
 
   if (!preview.open || !preview.paper) return null;
   const p = preview.paper;
   const authors = parseAuthors(p);
   const displayTitle = translation?.title ?? p.title;
   const displayAbstract = translation?.abstract ?? p.abstract;
-  const isTranslated = locale !== "en" && translation != null;
+  const isTranslated = needsTranslation && translation != null;
 
   async function onTranslate() {
     if (paperId == null) return;
@@ -84,7 +98,7 @@ export default function PaperPreviewModal() {
           <h2 className="text-xl font-semibold leading-tight">{displayTitle}</h2>
           {authors.length > 0 && <p className="text-sm text-zinc-500 mt-1">{authors.join(", ")}</p>}
 
-          {locale !== "en" && (
+          {needsTranslation && (
             <div className="mt-3">
               {!isTranslated ? (
                 <button
