@@ -1,15 +1,20 @@
 package com.arxivlens.controller;
 
+import com.arxivlens.dto.PaperDtos.ManualPaperRequest;
+import com.arxivlens.dto.PaperDtos.ManualPaperResponse;
 import com.arxivlens.entity.Paper;
 import com.arxivlens.entity.PaperTranslation;
 import com.arxivlens.service.PaperService;
 import com.arxivlens.service.PaperTranslationService;
 import com.arxivlens.web.ApiException;
+import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -62,5 +67,15 @@ public class PaperController {
     public PaperTranslation generateTranslation(@PathVariable Long id,
                                                 @RequestParam(name = "locale") String locale) {
         return translations.translateOrCached(id, locale);
+    }
+
+    /**
+     * Adds a user-pasted article (used for sources without a usable feed, like HBR
+     * after switching to manual mode). Any authenticated user can call this; rows
+     * are global (same model as arXiv-synced papers).
+     */
+    @PostMapping("/manual")
+    public ResponseEntity<ManualPaperResponse> createManual(@Valid @RequestBody ManualPaperRequest req) {
+        return ResponseEntity.status(201).body(service.createManual(req));
     }
 }

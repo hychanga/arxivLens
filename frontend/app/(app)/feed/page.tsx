@@ -12,6 +12,7 @@ import { useT } from "@/lib/i18n";
 import type { SortMode } from "@/types";
 import PaperCard from "@/components/PaperCard";
 import Pagination from "@/components/Pagination";
+import AddArticleButton from "@/components/AddArticleButton";
 
 const SORT_OPTIONS: { id: SortMode; tKey: string; needsKeywords?: boolean }[] = [
   { id: "NEWEST",    tKey: "feed.sort_newest"    },
@@ -41,7 +42,9 @@ export default function FeedPage() {
   const patchPrefs = usePreferencesStore((s) => s.patch);
 
   const sources = useSourcesStore((s) => s.items);
-  const currentSourceCode = findSourceById(sources, currentSourceId)?.code ?? null;
+  const currentSource = findSourceById(sources, currentSourceId);
+  const currentSourceCode = currentSource?.code ?? null;
+  const fetchPapers = usePapersStore((s) => s.fetch);
   // Per-source keywords: arXiv keywords don't apply when viewing HBR feed and vice versa.
   const keywords = useMemo(
     () => (currentSourceCode ? keywordsBySource[currentSourceCode] ?? [] : []),
@@ -169,11 +172,19 @@ export default function FeedPage() {
           })}
         </div>
 
+        {/* Manual paste lives only on HBR. arXiv has a working RSS sync so the
+            button would just confuse — every arXiv paper there is already there. */}
+        {currentSource && currentSourceCode === "hbr" && (
+          <div className="ml-auto">
+            <AddArticleButton sourceId={currentSource.id} onAdded={() => void fetchPapers()} />
+          </div>
+        )}
+
         {selectedCount > 0 && (
           <button
             onClick={saveSelected}
             disabled={savingBatch}
-            className="ml-auto rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 text-sm disabled:opacity-50"
+            className={`${currentSourceCode === "hbr" ? "" : "ml-auto "}rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 text-sm disabled:opacity-50`}
           >
             {t("feed.save_n", { n: selectedCount })}
           </button>
