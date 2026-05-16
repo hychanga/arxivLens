@@ -142,11 +142,15 @@ public final class HtmlExtractor {
             // English
             "post", "share", "tweet", "email", "print", "comment", "save",
             "next", "previous", "more", "menu", "search", "subscribe", "sign in", "sign up",
-            // Traditional Chinese
+            // Traditional Chinese — and shared Chinese (下一篇 / 上一篇 / 更多 are identical
+            // in Simplified, so they live here and aren't repeated below).
             "首頁", "目錄", "分享", "放大縮小", "字級", "列印",
             "分類", "主題分類", "下一篇", "上一篇", "更多", "推薦", "訂閱",
-            // Simplified Chinese
-            "首页", "目录", "栏目", "字号", "下一篇", "上一篇", "推荐", "订阅", "更多",
+            // Simplified Chinese — only chars that actually differ from Traditional.
+            // Anything matching Trad in glyph (downloaded as identical codepoints) goes
+            // above; listing the same string twice trips Set.of's duplicate guard and
+            // crashes class init with ExceptionInInitializerError.
+            "首页", "目录", "栏目", "字号", "推荐", "订阅",
             // Japanese
             "ホーム", "カテゴリ", "共有", "印刷", "次へ", "前へ", "もっと見る",
             // German
