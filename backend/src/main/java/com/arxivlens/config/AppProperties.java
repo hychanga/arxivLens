@@ -12,7 +12,8 @@ public record AppProperties(
         Scheduler scheduler,
         Mail mail,
         Frontend frontend,
-        PasswordReset passwordReset
+        PasswordReset passwordReset,
+        Oauth oauth
 ) {
     public record Jwt(String secret, long expirationMs, String issuer) {}
     public record Cors(List<String> allowedOrigins) {}
@@ -20,6 +21,15 @@ public record AppProperties(
         public record Gemini(String apiKey, String model) {}
     }
     public record Scheduler(String arxivCron, String hbrCron, boolean enabled) {}
+
+    /**
+     * OAuth identity-provider settings. {@code google.clientId} blank → real
+     * Google sign-in is disabled and {@code AuthService.oauthLogin} falls back
+     * to the mock demo-user behavior (useful for offline dev / CI).
+     */
+    public record Oauth(Google google) {
+        public record Google(String clientId) {}
+    }
 
     /**
      * Outgoing-mail settings. EmailService prefers HTTP providers (Resend) over

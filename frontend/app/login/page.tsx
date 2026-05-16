@@ -8,6 +8,7 @@ import { useThemeStore } from "@/store/theme";
 import { useT } from "@/lib/i18n";
 import LocaleSelector from "@/components/LocaleSelector";
 import ThemeToggle from "@/components/ThemeToggle";
+import GoogleSignInButton from "@/components/GoogleSignInButton";
 
 type Mode = "login" | "register" | "forgot";
 
@@ -220,14 +221,21 @@ function LoginPageInner() {
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-2">
-              <OAuthButton
-                provider="google"
-                label={t("login.continue_google")}
-                busyLabel={t("login.connecting")}
-                busy={oauthBusy === "google"}
-                disabled={oauthBusy !== null || pending}
-                onClick={() => startOAuth("google")}
-              />
+              {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
+                // Real Google sign-in (GIS popup). The official button replaces
+                // our custom one because Google requires its own branding when
+                // GIS issues real tokens — and it handles the popup flow itself.
+                <GoogleSignInButton onError={setOauthError} />
+              ) : (
+                <OAuthButton
+                  provider="google"
+                  label={t("login.continue_google")}
+                  busyLabel={t("login.connecting")}
+                  busy={oauthBusy === "google"}
+                  disabled={oauthBusy !== null || pending}
+                  onClick={() => startOAuth("google")}
+                />
+              )}
               <OAuthButton
                 provider="apple"
                 label={t("login.continue_apple")}

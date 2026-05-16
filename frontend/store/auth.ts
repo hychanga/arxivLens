@@ -20,7 +20,7 @@ interface AuthState {
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, displayName: string) => Promise<void>;
-  oauthLogin: (provider: OAuthProvider) => Promise<void>;
+  oauthLogin: (provider: OAuthProvider, idToken?: string) => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
   resetPassword: (token: string, password: string) => Promise<void>;
   logout: () => void;
@@ -93,11 +93,14 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  oauthLogin: async (provider) => {
+  oauthLogin: async (provider, idToken) => {
     set({ status: "loading", error: null });
     try {
       const res = await apiFetch<AuthResponse>(`/auth/oauth/${provider}`, {
         method: "POST",
+        // For Google: idToken is required (backend rejects otherwise).
+        // For Apple (still mocked): body is ignored, sent only to keep the request well-formed.
+        body: idToken ? { idToken } : { idToken: "" },
         auth: false,
       });
       applyAuthSuccess(set, res);

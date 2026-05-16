@@ -3,6 +3,7 @@ package com.arxivlens.controller;
 import com.arxivlens.dto.AuthDtos.AuthResponse;
 import com.arxivlens.dto.AuthDtos.ForgotPasswordRequest;
 import com.arxivlens.dto.AuthDtos.LoginRequest;
+import com.arxivlens.dto.AuthDtos.OAuthLoginRequest;
 import com.arxivlens.dto.AuthDtos.RegisterRequest;
 import com.arxivlens.dto.AuthDtos.ResetPasswordRequest;
 import com.arxivlens.service.AuthService;
@@ -39,12 +40,18 @@ public class AuthController {
     }
 
     /**
-     * Mock OAuth — accepts {@code google} or {@code apple} only. See AuthService
-     * docstring for why this is a stub instead of a real OAuth handshake.
+     * OAuth login. For {@code provider=google} the body must include
+     * {@code idToken} (Google Identity Services hands it to the frontend). For
+     * {@code provider=apple} the body is ignored — Apple Sign In remains a mock.
+     *
+     * <p>The body is optional so that the legacy mock call shape (no body) still
+     * works for {@code apple} and during local dev where Google isn't wired.
      */
     @PostMapping("/oauth/{provider}")
-    public AuthResponse oauthLogin(@PathVariable String provider) {
-        return auth.oauthLogin(provider);
+    public AuthResponse oauthLogin(@PathVariable String provider,
+                                   @RequestBody(required = false) OAuthLoginRequest body) {
+        String idToken = body == null ? null : body.idToken();
+        return auth.oauthLogin(provider, idToken);
     }
 
     /**

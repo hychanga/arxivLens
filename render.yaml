@@ -93,6 +93,15 @@ services:
       - key: MAIL_PASSWORD
         sync: false
 
+      # Google OAuth — Web client ID from console.cloud.google.com.
+      # MUST match NEXT_PUBLIC_GOOGLE_CLIENT_ID on the frontend (Vercel) so the
+      # backend will accept ID tokens minted with the same audience. Authorized
+      # JS origins on the OAuth client must include https://arxivlens.vercel.app
+      # (prod) and http://localhost:3000 (local dev).
+      # Leave blank to fall back to the mock demo-user behavior.
+      - key: GOOGLE_CLIENT_ID
+        sync: false           # e.g. 880984423210-…apps.googleusercontent.com
+
       # Toggle scheduler if you want to throttle outbound API usage on cold starts.
       - key: SCHEDULER_ENABLED
         value: "true"
