@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
+import { useLocaleStore, type Locale } from "@/store/locale";
 
 /**
  * Renders Google's official "Sign in with Google" button via Google Identity
@@ -74,9 +75,26 @@ interface Props {
   onError?: (message: string) => void;
 }
 
+/**
+ * Map our app's locale codes to whatever GIS expects. GIS uses BCP-47 codes
+ * and accepts {@code zh_TW}/{@code zh-TW} interchangeably; we send the underscore
+ * form because Google's own examples use it.
+ */
+function gisLocale(locale: Locale): string {
+  switch (locale) {
+    case "zh-TW": return "zh_TW";
+    case "zh-CN": return "zh_CN";
+    case "ja": return "ja";
+    case "de": return "de";
+    case "en":
+    default: return "en";
+  }
+}
+
 export default function GoogleSignInButton({ onError }: Props) {
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
   const oauthLogin = useAuthStore((s) => s.oauthLogin);
+  const locale = useLocaleStore((s) => s.locale);
   const router = useRouter();
   const buttonRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
@@ -103,6 +121,9 @@ export default function GoogleSignInButton({ onError }: Props) {
             }
           },
         });
+        // Clear the container so re-renders (e.g. on locale change) don't
+        // stack a second button next to the old one.
+        buttonRef.current.innerHTML = "";
         // Match the visual rhythm of the adjacent custom button. Width is a
         // pixel value — we use the container's measured width if available so
         // the button stretches to fill its grid cell.
@@ -114,6 +135,7 @@ export default function GoogleSignInButton({ onError }: Props) {
           shape: "rectangular",
           logo_alignment: "center",
           width,
+          locale: gisLocale(locale),
         });
       })
       .catch((e) => {
@@ -123,7 +145,9 @@ export default function GoogleSignInButton({ onError }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [clientId, oauthLogin, router, onError]);
+    // Re-render on locale change so the button label localizes alongside the
+    // rest of the UI rather than sticking to whatever the browser default is.
+  }, [clientId, locale, oauthLogin, router, onError]);
 
   if (!clientId) return null;
 
