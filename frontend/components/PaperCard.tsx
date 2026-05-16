@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Paper } from "@/types";
 import { parseAuthors, fmtDate, shortenUrl } from "@/lib/format";
 import { scoreBadgeClass } from "@/lib/relevance";
 import { useT } from "@/lib/i18n";
+import { detectLanguage, sameLanguageFamily } from "@/lib/lang";
 import { useLocaleStore } from "@/store/locale";
 import { useTranslationsStore } from "@/store/translations";
 import { useUiStore } from "@/store/ui";
@@ -40,15 +41,28 @@ export default function PaperCard({
   const isLoading = useTranslationsStore((s) => s.loading.has(`${paper.id}:${locale}`));
   const flash = useUiStore((s) => s.flash);
 
+  // Whether the article's actual language differs from the user's UI locale —
+  // sample the body first because chrome leftovers in title/abstract can
+  // mis-skew detection (see PaperPreviewModal for the HBR-Taiwan rationale).
+  const articleLang = useMemo(() => {
+    const sample =
+      paper.introduction?.trim() ||
+      paper.abstract?.trim() ||
+      paper.title?.trim() ||
+      "";
+    return detectLanguage(sample);
+  }, [paper]);
+  const needsTranslation = !sameLanguageFamily(articleLang, locale);
+
   // Probe cache once per (paper, locale). The store de-dupes loading + 404 markers internally.
   useEffect(() => {
-    if (locale !== "en") void fetchCached(paper.id, locale);
-  }, [paper.id, locale, fetchCached]);
+    if (needsTranslation) void fetchCached(paper.id, locale);
+  }, [paper.id, locale, needsTranslation, fetchCached]);
 
   const authors = parseAuthors(paper);
   const displayTitle = translation?.title ?? paper.title;
   const displayAbstract = translation?.abstract ?? paper.abstract;
-  const isTranslated = locale !== "en" && translation != null;
+  const isTranslated = needsTranslation && translation != null;
 
   async function onTranslateClick() {
     try {
@@ -126,7 +140,7 @@ export default function PaperCard({
             <div className="mt-3 space-y-2 text-sm">
               <p className="leading-relaxed whitespace-pre-line">{displayAbstract}</p>
 
-              {locale !== "en" && (
+              {needsTranslation && (
                 <div className="flex items-center gap-2 flex-wrap">
                   {!isTranslated ? (
                     <button
