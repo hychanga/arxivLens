@@ -83,6 +83,19 @@ export default function PaperPreviewModal() {
   const displayAbstract = translation?.abstract ?? p.abstract;
   const isTranslated = needsTranslation && translation != null;
 
+  // Manual / URL-imported articles store the full body in `introduction` and a
+  // truncated copy in `abstract` (the feed-card teaser). Rendering both in the
+  // modal just shows the same paragraph twice. Detect the prefix relationship
+  // from the raw abstract — when a translation exists we still want to show it
+  // since the abstract is the only field that gets translated.
+  const abstractIsTeaserOfIntro = (() => {
+    const a = p.abstract?.trim() ?? "";
+    const intro = p.introduction?.trim() ?? "";
+    if (!a || !intro) return false;
+    const stripped = a.replace(/…$/u, "").trim();
+    return stripped.length > 0 && intro.startsWith(stripped);
+  })();
+
   // Manual-added papers (external_id starts with "manual-") can be deleted by
   // the user — they came in via the paste / URL-import flow and have no
   // upstream source to recover them from. Sync-fetched papers don't expose
@@ -171,7 +184,9 @@ export default function PaperPreviewModal() {
         </header>
 
         <section className="p-5 space-y-5 text-sm">
-          <Block title={t("modal.abstract")} body={displayAbstract} />
+          {(!abstractIsTeaserOfIntro || isTranslated) && (
+            <Block title={t("modal.abstract")} body={displayAbstract} />
+          )}
           {p.introduction && <Block title={t("modal.intro")} body={p.introduction} />}
           {p.conclusion && <Block title={t("modal.conclusion")} body={p.conclusion} />}
         </section>
