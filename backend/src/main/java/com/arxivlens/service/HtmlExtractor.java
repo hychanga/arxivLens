@@ -213,6 +213,30 @@ public final class HtmlExtractor {
     }
 
     /**
+     * Section labels that mark "everything below this is related-articles /
+     * footer chrome, not body text". HBR Taiwan renders a "延伸閱讀" heading
+     * before a list of links; readers don't want those repeated in the saved
+     * article text, and they trip up translation token budgets too.
+     *
+     * <p>When postProcess encounters a line equal (case-insensitive,
+     * trim-equal) to one of these, it stops emitting further lines.
+     */
+    private static final Set<String> BODY_END_MARKERS = Set.of(
+            // Traditional / Simplified Chinese (codepoints differ between scripts
+            // for these phrases, so listing both is safe with Set.of).
+            "延伸閱讀", "延伸阅读",
+            "推薦閱讀", "推荐阅读",
+            "相關文章", "相关文章",
+            "更多文章",
+            // English
+            "related articles", "related reading", "further reading", "read more",
+            // Japanese
+            "関連記事", "おすすめ記事",
+            // German
+            "weiterführende artikel", "verwandte artikel"
+    );
+
+    /**
      * UI chrome lines that show up as standalone block-level text on most news
      * sites: breadcrumbs, share buttons, font-size widgets, "next/previous" nav.
      * Matched case-insensitively against {@code line.toLowerCase(ROOT)}.
@@ -262,6 +286,11 @@ public final class HtmlExtractor {
 
         for (String raw : lines) {
             String line = raw.trim();
+            // Hard stop: everything from "延伸閱讀" / "Related articles" onwards
+            // is footer chrome — drop it.
+            if (BODY_END_MARKERS.contains(line.toLowerCase(Locale.ROOT))) {
+                break;
+            }
             if (line.isEmpty()) {
                 // Collapse runs of blank lines but preserve a single paragraph break.
                 if (!out.isEmpty() && !out.get(out.size() - 1).isEmpty()) {

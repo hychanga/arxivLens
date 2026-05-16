@@ -58,6 +58,16 @@ public class PaperTranslation {
     @JsonProperty("abstract")
     private String abstractText;
 
+    /**
+     * Translated introduction / full body. Populated only for manual / URL-imported
+     * articles that store their body in {@code Paper.introduction}; arxiv papers
+     * leave this null. Allows the preview modal to show a fully-translated body
+     * instead of just a translated teaser.
+     */
+    @Lob
+    @Column(name = "introduction", columnDefinition = "TEXT")
+    private String introduction;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

@@ -153,23 +153,26 @@ public class GeminiAiClient implements AiClient {
     }
 
     @Override
-    public TranslationResult translate(String title, String abstractText, String targetLanguage) {
+    public TranslationResult translate(String title, String abstractText, String introduction, String targetLanguage) {
         String apiKey = requireApiKey();
         String url = BASE + props.ai().gemini().model() + ":generateContent?key="
                 + URLEncoder.encode(apiKey, StandardCharsets.UTF_8);
+
+        boolean hasIntro = introduction != null && !introduction.isBlank();
 
         ObjectNode body = mapper.createObjectNode();
         ArrayNode contents = body.putArray("contents");
         ObjectNode content = contents.addObject();
         ArrayNode parts = content.putArray("parts");
-        parts.addObject().put("text", buildTranslationPrompt(title, abstractText, targetLanguage));
+        parts.addObject().put("text", buildTranslationPrompt(title, abstractText, introduction, targetLanguage));
 
         ObjectNode gc = body.putObject("generationConfig");
         gc.put("responseMimeType", "application/json");
         gc.put("temperature", 0.2);
-        // 8192 leaves plenty of room for long English abstracts translated into
-        // CJK languages.
-        gc.put("maxOutputTokens", 8192);
+        // 8192 was fine for abstract-only. Manual / URL-imported articles store
+        // the whole body in introduction, so we need much more headroom — bump
+        // to 32k when an intro is being translated. Gemini 2.5 supports it.
+        gc.put("maxOutputTokens", hasIntro ? 32768 : 8192);
         // Gemini 2.5's default thinking mode burns the bulk of maxOutputTokens on
         // internal reasoning before producing visible output. Translation needs none
         // of that — disable it. Without this, even 8192 hits MAX_TOKENS on long abstracts.
@@ -223,9 +226,13 @@ public class GeminiAiClient implements AiClient {
                         "Gemini returned malformed JSON for translation"
                         + (finishReason.isBlank() ? "" : " (finishReason=" + finishReason + ")"));
             }
+            String translatedIntro = hasIntro
+                    ? json.path("introduction").asText(introduction)
+                    : null;
             return new TranslationResult(
                     json.path("title").asText(title),
-                    json.path("abstract").asText(abstractText)
+                    json.path("abstract").asText(abstractText),
+                    translatedIntro
             );
         } catch (ApiException e) {
             throw e;
@@ -238,21 +245,32 @@ public class GeminiAiClient implements AiClient {
         }
     }
 
-    private static String buildTranslationPrompt(String title, String abstractText, String targetLanguage) {
-        StringBuilder sb = new StringBuilder(1024);
-        sb.append("You are a professional translator. Translate the title and abstract below into ")
+    private static String buildTranslationPrompt(String title, String abstractText, String introduction, String targetLanguage) {
+        boolean hasIntro = introduction != null && !introduction.isBlank();
+        StringBuilder sb = new StringBuilder(2048);
+        sb.append("You are a professional translator. Translate the fields below into ")
           .append(targetLanguage).append(".\n");
         sb.append("Rules:\n");
         sb.append("- Preserve technical terminology and proper nouns when there is no idiomatic translation.\n");
         sb.append("- Keep the meaning faithful; do not summarize or shorten.\n");
+        sb.append("- Preserve paragraph breaks exactly as in the source.\n");
         sb.append("- Output ONLY a JSON object matching the schema. No markdown, no commentary.\n\n");
         sb.append("=== INPUT ===\n");
         sb.append("Title: ").append(title == null ? "" : title).append("\n\n");
-        sb.append("Abstract:\n").append(abstractText == null ? "" : abstractText).append("\n\n");
-        sb.append("=== SCHEMA ===\n");
+        sb.append("Abstract:\n").append(abstractText == null ? "" : abstractText).append("\n");
+        if (hasIntro) {
+            sb.append("\nIntroduction:\n").append(introduction).append("\n");
+        }
+        sb.append("\n=== SCHEMA ===\n");
         sb.append("{\n");
         sb.append("  \"title\":    string,   // translated title\n");
-        sb.append("  \"abstract\": string    // translated abstract, preserving paragraph breaks\n");
+        sb.append("  \"abstract\": string");
+        if (hasIntro) {
+            sb.append(",   // translated abstract\n");
+            sb.append("  \"introduction\": string  // translated introduction / body, paragraph breaks preserved\n");
+        } else {
+            sb.append("    // translated abstract\n");
+        }
         sb.append("}\n");
         return sb.toString();
     }

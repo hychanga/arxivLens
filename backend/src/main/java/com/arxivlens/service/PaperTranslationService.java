@@ -64,13 +64,23 @@ public class PaperTranslationService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Paper not found"));
 
         String languageName = LANGUAGE_NAMES.get(locale);
-        AiClient.TranslationResult r = ai.translate(p.getTitle(), p.getAbstractText(), languageName);
+        // For manual / URL-imported articles, p.introduction holds the full body
+        // (and p.abstractText is just a truncated teaser). Translating both means
+        // the preview modal can show a fully-translated article instead of only
+        // a translated teaser. arxiv papers leave introduction null and pay
+        // nothing extra here.
+        AiClient.TranslationResult r = ai.translate(
+                p.getTitle(),
+                p.getAbstractText(),
+                p.getIntroduction(),
+                languageName);
 
         PaperTranslation t = new PaperTranslation();
         t.setPaper(p);
         t.setLocale(locale);
         t.setTitle(r.title() == null || r.title().isBlank() ? p.getTitle() : r.title());
         t.setAbstractText(r.abstractText() == null || r.abstractText().isBlank() ? p.getAbstractText() : r.abstractText());
+        t.setIntroduction(r.introduction() == null || r.introduction().isBlank() ? null : r.introduction());
         return translations.save(t);
     }
 

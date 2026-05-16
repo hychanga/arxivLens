@@ -90,6 +90,11 @@ public class SchemaBootstrap {
         }
         createTable("password_reset_tokens", CREATE_PASSWORD_RESET_TOKENS);
         createTable("download_blobs", CREATE_DOWNLOAD_BLOBS);
+        // Belt-and-braces for the new translation.introduction column. Hibernate's
+        // ddl-auto=update should add it, but in practice managed TiDB has been
+        // flaky about ALTERing existing tables — same reason the per-table
+        // CREATE IF NOT EXISTS calls exist above.
+        addColumnIfMissing("paper_translations", "introduction", "TEXT NULL");
     }
 
     /**
@@ -115,6 +120,26 @@ public class SchemaBootstrap {
      * Backticks the column name because both candidates here are reserved
      * keywords in MySQL/TiDB.
      */
+    /**
+     * Idempotent {@code ALTER TABLE … ADD COLUMN}. Adds the column when missing
+     * and is a no-op otherwise. The type fragment is interpolated raw — only
+     * pass trusted, hard-coded values (never user input).
+     */
+    private void addColumnIfMissing(String table, String column, String typeFragment) {
+        try {
+            Integer present = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS "
+                            + "WHERE TABLE_SCHEMA = DATABASE() "
+                            + "AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+                    Integer.class, table, column);
+            if (present != null && present > 0) return;
+            jdbc.execute("ALTER TABLE " + table + " ADD COLUMN `" + column + "` " + typeFragment);
+            log.info("Schema bootstrap: added column {}.{} ({})", table, column, typeFragment);
+        } catch (Exception e) {
+            log.warn("Schema bootstrap: could not add {}.{} — {}", table, column, e.getMessage());
+        }
+    }
+
     private void dropColumnIfExists(String table, String column) {
         try {
             Integer present = jdbc.queryForObject(

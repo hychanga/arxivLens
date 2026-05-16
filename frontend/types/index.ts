@@ -133,6 +133,8 @@ export interface PaperTranslation {
   locale: string;
   title: string | null;
   abstract: string | null;
+  /** Translated full body. Populated only for manual / URL-imported articles. */
+  introduction: string | null;
   createdAt?: string;
 }
 

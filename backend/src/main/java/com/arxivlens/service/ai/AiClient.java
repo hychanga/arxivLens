@@ -11,11 +11,15 @@ public interface AiClient {
     AiSummaryResult summarize(Paper paper);
 
     /**
-     * Translates a paper's {@code title} and {@code abstractText} into the language named by
-     * {@code targetLanguage} (e.g. {@code "Traditional Chinese (Taiwan)"}, {@code "Japanese"}).
-     * Implementations should preserve technical terminology when there's no idiomatic equivalent.
+     * Translates a paper's {@code title}, {@code abstractText}, and (optional)
+     * {@code introduction} into the language named by {@code targetLanguage}
+     * (e.g. {@code "Traditional Chinese (Taiwan)"}, {@code "Japanese"}).
+     * Implementations should preserve technical terminology when there's no
+     * idiomatic equivalent. The introduction is what manual / URL-imported
+     * articles store as their full body; passing null skips it (returned
+     * introduction will be null too).
      */
-    TranslationResult translate(String title, String abstractText, String targetLanguage);
+    TranslationResult translate(String title, String abstractText, String introduction, String targetLanguage);
 
     record AiSummaryResult(
             String summary,
@@ -25,5 +29,5 @@ public interface AiClient {
             Integer readingTimeMin
     ) {}
 
-    record TranslationResult(String title, String abstractText) {}
+    record TranslationResult(String title, String abstractText, String introduction) {}
 }

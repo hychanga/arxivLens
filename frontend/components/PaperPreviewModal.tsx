@@ -81,6 +81,7 @@ export default function PaperPreviewModal() {
   const authors = parseAuthors(p);
   const displayTitle = translation?.title ?? p.title;
   const displayAbstract = translation?.abstract ?? p.abstract;
+  const displayIntroduction = translation?.introduction ?? p.introduction;
   const isTranslated = needsTranslation && translation != null;
 
   // Manual / URL-imported articles store the full body in `introduction` and a
@@ -211,10 +212,10 @@ export default function PaperPreviewModal() {
         </header>
 
         <section className="p-5 space-y-5 text-sm">
-          {(!abstractIsTeaserOfIntro || isTranslated) && (
+          {!abstractIsTeaserOfIntro && (
             <Block title={t("modal.abstract")} body={displayAbstract} />
           )}
-          {p.introduction && <Block title={t("modal.intro")} body={p.introduction} />}
+          {displayIntroduction && <Block title={t("modal.intro")} body={displayIntroduction} />}
           {p.conclusion && <Block title={t("modal.conclusion")} body={p.conclusion} />}
         </section>
 

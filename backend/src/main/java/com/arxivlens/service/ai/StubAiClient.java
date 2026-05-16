@@ -33,7 +33,7 @@ public class StubAiClient implements AiClient {
     }
 
     @Override
-    public TranslationResult translate(String title, String abstractText, String targetLanguage) {
+    public TranslationResult translate(String title, String abstractText, String introduction, String targetLanguage) {
         throw new ApiException(HttpStatus.NOT_IMPLEMENTED,
                 "AI translation not configured. Set GEMINI_API_KEY in the environment and restart the server.");
     }
