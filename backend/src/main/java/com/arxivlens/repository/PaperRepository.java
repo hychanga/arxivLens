@@ -18,6 +18,13 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
     long countBySourceId(Long sourceId);
 
     /**
+     * Used by the admin "Clear manual articles" action — narrows the cascade
+     * delete to papers whose {@code externalId} was synthesized by the manual /
+     * URL-import flow ({@code "manual-<uuid>"}).
+     */
+    List<Paper> findByExternalIdStartingWith(String prefix);
+
+    /**
      * Oldest {@code publishedAt} for the source — used by {@code StartupSyncRunner}
      * to detect "shallow" datasets (only the last few days exist) that need a backfill
      * even though row count alone looks healthy.

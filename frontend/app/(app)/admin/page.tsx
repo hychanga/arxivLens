@@ -87,6 +87,15 @@ export default function AdminPage() {
     }
   }
 
+  async function clearManualArticles() {
+    try {
+      const r = await apiFetch<{ removed: number }>("/admin/manual-articles", { method: "DELETE" });
+      flash(t("admin.clear_manual_done", { n: r.removed }), "success");
+    } catch (e) {
+      flash(e instanceof Error ? e.message : "Clear failed", "error");
+    }
+  }
+
   async function backfillAll() {
     setBackfilling(true);
     try {
@@ -284,6 +293,20 @@ export default function AdminPage() {
       <section className="rounded-lg border border-red-300 dark:border-red-800 bg-red-50/50 dark:bg-red-900/10 p-4 space-y-3">
         <h2 className="font-semibold text-red-700 dark:text-red-300">{t("admin.danger_zone")}</h2>
         <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() =>
+              ask({
+                title: t("admin.clear_manual_title"),
+                message: t("admin.clear_manual_msg"),
+                confirmLabel: t("admin.clear_manual"),
+                danger: true,
+                onConfirm: clearManualArticles,
+              })
+            }
+            className="rounded bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 text-sm"
+          >
+            {t("admin.clear_manual")}
+          </button>
           <button
             onClick={() =>
               ask({

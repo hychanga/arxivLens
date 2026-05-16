@@ -4,6 +4,7 @@ import com.arxivlens.dto.AdminDtos.SettingsView;
 import com.arxivlens.dto.AdminDtos.UpdateSettingsRequest;
 import com.arxivlens.dto.SyncDtos.SyncResult;
 import com.arxivlens.repository.PaperRepository;
+import com.arxivlens.service.PaperService;
 import com.arxivlens.service.SettingService;
 import com.arxivlens.service.sync.SyncDispatcher;
 import jakarta.validation.Valid;
@@ -26,11 +27,16 @@ public class AdminController {
 
     private final SettingService settings;
     private final PaperRepository papers;
+    private final PaperService paperService;
     private final SyncDispatcher dispatcher;
 
-    public AdminController(SettingService settings, PaperRepository papers, SyncDispatcher dispatcher) {
+    public AdminController(SettingService settings,
+                           PaperRepository papers,
+                           PaperService paperService,
+                           SyncDispatcher dispatcher) {
         this.settings = settings;
         this.papers = papers;
+        this.paperService = paperService;
         this.dispatcher = dispatcher;
     }
 
@@ -71,5 +77,16 @@ public class AdminController {
     @PostMapping("/backfill")
     public List<SyncResult> backfill(@RequestParam(name = "months", defaultValue = "12") int months) {
         return dispatcher.backfillAllEnabled(Math.max(1, Math.min(24, months)));
+    }
+
+    /**
+     * Bulk-deletes every manually-added paper (externalId starting with
+     * "manual-") plus its translations / favorites / summaries / downloads /
+     * blobs. Used for a clean slate after testing the paste / URL-import flow.
+     * Sync-fetched arXiv papers are untouched — those go via /papers above.
+     */
+    @DeleteMapping("/manual-articles")
+    public Map<String, Integer> clearManualArticles() {
+        return Map.of("removed", paperService.deleteAllManual());
     }
 }

@@ -242,6 +242,26 @@ public class PaperService {
         log.info("Deleted manual paper {} ({})", paperId, p.getExternalId());
     }
 
+    /**
+     * Wipes every {@code manual-…} paper (and its translations / favorites /
+     * summaries / downloads / blobs). Called from the admin "Clear manual
+     * articles" action when the user wants to start over without poking each
+     * paper individually.
+     *
+     * <p>Reuses {@link #delete(Long)} per row so the cascade logic stays in
+     * one place; for hobby-tier volume (tens to a few hundred manual papers)
+     * the per-row overhead is irrelevant.
+     */
+    @Transactional
+    public int deleteAllManual() {
+        List<Paper> targets = papers.findByExternalIdStartingWith("manual-");
+        for (Paper p : targets) {
+            delete(p.getId());
+        }
+        log.info("Deleted {} manual papers in bulk", targets.size());
+        return targets.size();
+    }
+
     private String fetchHtml(String url) {
         URI uri;
         try {
