@@ -18,16 +18,20 @@ import java.util.Set;
 public class PaperTranslationService {
 
     /**
-     * Locales we support translating into. {@code en} is the original — the frontend never asks
-     * us to translate to English so we don't list it here.
+     * Locales we support translating into. Must match every UI locale the
+     * frontend can be in — once a user can paste a Chinese article and view
+     * the app in English (or German), translating Chinese → English is a real
+     * request that needs to be served, not rejected as "unsupported".
      */
-    private static final Set<String> SUPPORTED = Set.of("zh-TW", "zh-CN", "ja");
+    private static final Set<String> SUPPORTED = Set.of("en", "zh-TW", "zh-CN", "ja", "de");
 
     /** Gemini gets a human-readable language name in the prompt rather than a BCP-47 tag. */
     private static final Map<String, String> LANGUAGE_NAMES = Map.of(
+            "en",    "English",
             "zh-TW", "Traditional Chinese (Taiwan)",
             "zh-CN", "Simplified Chinese",
-            "ja",    "Japanese"
+            "ja",    "Japanese",
+            "de",    "German"
     );
 
     private final PaperRepository papers;
