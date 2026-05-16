@@ -1,6 +1,11 @@
 package com.arxivlens.service;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -76,7 +81,7 @@ public final class HtmlExtractor {
         }
         String title = pickTitle(html);
         Instant publishedAt = pickPublishedAt(html);
-        String content = pickContent(html);
+        String content = postProcess(pickContent(html), title);
         return new ExtractedArticle(title, content, publishedAt);
     }
 
@@ -126,6 +131,88 @@ public final class HtmlExtractor {
     private static String firstGroup(Pattern p, String input) {
         Matcher m = p.matcher(input);
         return m.find() ? m.group(1) : null;
+    }
+
+    /**
+     * UI chrome lines that show up as standalone block-level text on most news
+     * sites: breadcrumbs, share buttons, font-size widgets, "next/previous" nav.
+     * Matched case-insensitively against {@code line.toLowerCase(ROOT)}.
+     */
+    private static final Set<String> CHROME_PHRASES = Set.of(
+            // English
+            "post", "share", "tweet", "email", "print", "comment", "save",
+            "next", "previous", "more", "menu", "search", "subscribe", "sign in", "sign up",
+            // Traditional Chinese
+            "首頁", "目錄", "分享", "放大縮小", "字級", "列印",
+            "分類", "主題分類", "下一篇", "上一篇", "更多", "推薦", "訂閱",
+            // Simplified Chinese
+            "首页", "目录", "栏目", "字号", "下一篇", "上一篇", "推荐", "订阅", "更多",
+            // Japanese
+            "ホーム", "カテゴリ", "共有", "印刷", "次へ", "前へ", "もっと見る",
+            // German
+            "startseite", "kategorie", "teilen", "drucken", "weiter", "zurück", "abonnieren"
+    );
+
+    /**
+     * Cleans the post-strip-tags output by:
+     * <ol>
+     *   <li>Dropping lines that match common UI chrome (Share, 分享, 放大縮小, …).</li>
+     *   <li>Dropping lines that equal the article title — the preview modal
+     *       renders title separately, so seeing it 3× in the body looks broken.</li>
+     *   <li>De-duping consecutive identical lines (common breadcrumb-then-h1
+     *       pattern) and globally de-duping short lines (≤30 chars), which is
+     *       where chrome repetition concentrates. Long paragraphs are left
+     *       alone so legitimate body repetition isn't lost.</li>
+     * </ol>
+     *
+     * <p>Intentionally conservative — we don't try to reflow the article or
+     * strip headings; that's a job for a Readability-style scoring pass and
+     * out of scope for the current regex extractor.
+     */
+    static String postProcess(String text, String title) {
+        if (text == null || text.isBlank()) return text == null ? "" : text;
+        String titleTrim = title == null ? "" : title.trim();
+        String[] lines = text.split("\n", -1);
+        List<String> out = new ArrayList<>(lines.length);
+        Set<String> seenShort = new HashSet<>();
+        String prev = null;
+
+        for (String raw : lines) {
+            String line = raw.trim();
+            if (line.isEmpty()) {
+                // Collapse runs of blank lines but preserve a single paragraph break.
+                if (!out.isEmpty() && !out.get(out.size() - 1).isEmpty()) {
+                    out.add("");
+                    prev = "";
+                }
+                continue;
+            }
+            if (line.equals(prev)) continue;
+            if (!titleTrim.isEmpty() && line.equals(titleTrim)) {
+                prev = line;
+                continue;
+            }
+            if (CHROME_PHRASES.contains(line.toLowerCase(Locale.ROOT))) {
+                prev = line;
+                continue;
+            }
+            // Short lines (likely nav / labels / repeated headers) are de-duped
+            // globally. Long paragraphs aren't, since articles can legitimately
+            // repeat a phrase across paragraphs.
+            if (line.length() <= 30) {
+                if (seenShort.contains(line)) {
+                    prev = line;
+                    continue;
+                }
+                seenShort.add(line);
+            }
+            out.add(line);
+            prev = line;
+        }
+
+        while (!out.isEmpty() && out.get(0).isEmpty()) out.remove(0);
+        while (!out.isEmpty() && out.get(out.size() - 1).isEmpty()) out.remove(out.size() - 1);
+        return String.join("\n", out);
     }
 
     /**
