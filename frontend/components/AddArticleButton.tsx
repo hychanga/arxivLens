@@ -174,6 +174,14 @@ export default function AddArticleButton({ sourceId, onAdded }: Props) {
                     placeholder="https://www.hbrtaiwan.com/article/..."
                     className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   />
+                  {importUrl.trim() && !importUrl.toLowerCase().includes("hbr") && (
+                    <p
+                      role="alert"
+                      className="mt-1 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1"
+                    >
+                      ⚠ {t("feed.add_url_warn_not_hbr")}
+                    </p>
+                  )}
                 </div>
                 <DialogFooter
                   onCancel={() => setOpen(false)}

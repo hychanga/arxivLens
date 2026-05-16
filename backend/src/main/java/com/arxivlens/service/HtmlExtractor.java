@@ -1,6 +1,10 @@
 package com.arxivlens.service;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -43,12 +47,45 @@ public final class HtmlExtractor {
             "<meta\\s+[^>]*content\\s*=\\s*[\"']([^\"']+)[\"'][^>]*property\\s*=\\s*[\"']og:title[\"']",
             Pattern.CASE_INSENSITIVE);
 
-    private static final Pattern PUBLISHED_PC = Pattern.compile(
-            "<meta\\s+[^>]*property\\s*=\\s*[\"']article:published_time[\"'][^>]*content\\s*=\\s*[\"']([^\"']+)[\"']",
-            Pattern.CASE_INSENSITIVE);
-    private static final Pattern PUBLISHED_CP = Pattern.compile(
-            "<meta\\s+[^>]*content\\s*=\\s*[\"']([^\"']+)[\"'][^>]*property\\s*=\\s*[\"']article:published_time[\"']",
-            Pattern.CASE_INSENSITIVE);
+    /**
+     * Ordered list of "where to look for a publish date" patterns. We try every
+     * one and return the first that parses — HBR Taiwan doesn't ship
+     * {@code article:published_time}, so the JSON-LD {@code datePublished} block
+     * and the {@code <time datetime>} element matter just as much.
+     */
+    private static final Pattern[] PUBLISHED_PATTERNS = {
+            // <meta property="article:published_time" content="..."> (both attr orders)
+            Pattern.compile(
+                    "<meta\\s+[^>]*property\\s*=\\s*[\"']article:published_time[\"'][^>]*content\\s*=\\s*[\"']([^\"']+)[\"']",
+                    Pattern.CASE_INSENSITIVE),
+            Pattern.compile(
+                    "<meta\\s+[^>]*content\\s*=\\s*[\"']([^\"']+)[\"'][^>]*property\\s*=\\s*[\"']article:published_time[\"']",
+                    Pattern.CASE_INSENSITIVE),
+            // <meta itemprop="datePublished" content="...">
+            Pattern.compile(
+                    "<meta\\s+[^>]*itemprop\\s*=\\s*[\"']datePublished[\"'][^>]*content\\s*=\\s*[\"']([^\"']+)[\"']",
+                    Pattern.CASE_INSENSITIVE),
+            // <meta name="pubdate" / "publishdate" / "date" content="...">
+            Pattern.compile(
+                    "<meta\\s+[^>]*name\\s*=\\s*[\"'](?:pubdate|publishdate|date)[\"'][^>]*content\\s*=\\s*[\"']([^\"']+)[\"']",
+                    Pattern.CASE_INSENSITIVE),
+            // JSON-LD: "datePublished":"2026-05-10T..." — appears in schema.org Article blocks.
+            Pattern.compile(
+                    "\"datePublished\"\\s*:\\s*\"([^\"]+)\"",
+                    Pattern.CASE_INSENSITIVE),
+            // <time datetime="...">  — fallback for sites that only mark up the date in markup.
+            Pattern.compile(
+                    "<time\\b[^>]*\\sdatetime\\s*=\\s*[\"']([^\"']+)[\"']",
+                    Pattern.CASE_INSENSITIVE),
+    };
+
+    /** Matches yyyy/MM/dd, yyyy-MM-dd, yyyy.MM.dd in the middle of a longer string. */
+    private static final Pattern NUMERIC_DATE = Pattern.compile(
+            "(\\d{4})[/.\\-](\\d{1,2})[/.\\-](\\d{1,2})");
+
+    /** Matches yyyy年MM月dd日 — common on HBR Taiwan article meta. */
+    private static final Pattern CHINESE_DATE = Pattern.compile(
+            "(\\d{4})\\s*年\\s*(\\d{1,2})\\s*月\\s*(\\d{1,2})\\s*日");
 
     private static final Pattern ARTICLE_TAG = Pattern.compile(
             "<article\\b[^>]*>([\\s\\S]*?)</article>", Pattern.CASE_INSENSITIVE);
@@ -95,12 +132,54 @@ public final class HtmlExtractor {
     }
 
     private static Instant pickPublishedAt(String html) {
-        String iso = firstGroup(PUBLISHED_PC, html);
-        if (iso == null) iso = firstGroup(PUBLISHED_CP, html);
-        if (iso == null || iso.isBlank()) return null;
+        for (Pattern p : PUBLISHED_PATTERNS) {
+            String raw = firstGroup(p, html);
+            Instant parsed = parseDate(raw);
+            if (parsed != null) return parsed;
+        }
+        // Last-resort: search the whole doc for a Chinese-format date. HBR Taiwan
+        // articles often print "2026年5月10日" inline near the byline without any
+        // structured metadata around it.
+        Matcher cn = CHINESE_DATE.matcher(html);
+        if (cn.find()) {
+            Instant fromCn = parseYmd(cn.group(1), cn.group(2), cn.group(3));
+            if (fromCn != null) return fromCn;
+        }
+        return null;
+    }
+
+    /** Tries the most common publish-date encodings; returns null if none parse. */
+    private static Instant parseDate(String raw) {
+        if (raw == null) return null;
+        String s = raw.trim();
+        if (s.isEmpty()) return null;
+        // 1) Full ISO 8601 instant ("2026-05-10T08:00:00Z").
+        try { return Instant.parse(s); } catch (Exception ignored) {}
+        // 2) Offset date-time ("2026-05-10T08:00:00+08:00").
+        try { return OffsetDateTime.parse(s).toInstant(); } catch (Exception ignored) {}
+        // 3) Local date-time without offset — assume UTC.
+        try { return LocalDateTime.parse(s).toInstant(ZoneOffset.UTC); } catch (Exception ignored) {}
+        // 4) Plain ISO date ("2026-05-10").
+        try { return LocalDate.parse(s).atStartOfDay(ZoneOffset.UTC).toInstant(); } catch (Exception ignored) {}
+        // 5) yyyy/MM/dd, yyyy.MM.dd, yyyy-MM-dd inside a longer string.
+        Matcher m = NUMERIC_DATE.matcher(s);
+        if (m.find()) {
+            Instant fromN = parseYmd(m.group(1), m.group(2), m.group(3));
+            if (fromN != null) return fromN;
+        }
+        // 6) yyyy年MM月dd日.
+        Matcher c = CHINESE_DATE.matcher(s);
+        if (c.find()) {
+            Instant fromC = parseYmd(c.group(1), c.group(2), c.group(3));
+            if (fromC != null) return fromC;
+        }
+        return null;
+    }
+
+    private static Instant parseYmd(String y, String mo, String d) {
         try {
-            // article:published_time is conventionally ISO 8601 with timezone.
-            return Instant.parse(iso.trim());
+            return LocalDate.of(Integer.parseInt(y), Integer.parseInt(mo), Integer.parseInt(d))
+                    .atStartOfDay(ZoneOffset.UTC).toInstant();
         } catch (Exception e) {
             return null;
         }
