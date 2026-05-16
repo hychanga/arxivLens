@@ -38,4 +38,18 @@ public final class PaperDtos {
             List<String> authors,
             Instant publishedAt
     ) {}
+
+    /**
+     * Body for {@code POST /api/papers/import-url}. Server fetches the URL,
+     * extracts title + content, and saves a Paper in one shot.
+     *
+     * <p>Note: paywalled sites only return the public teaser to an anonymous
+     * fetch. For full subscriber content the user falls back to
+     * {@link ManualPaperRequest}.
+     */
+    public record ImportUrlRequest(
+            @NotNull Long sourceId,
+            @NotBlank @Size(max = 2048) String url,
+            @Size(max = 64) String topicCode
+    ) {}
 }

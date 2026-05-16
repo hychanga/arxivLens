@@ -1,5 +1,6 @@
 package com.arxivlens.service;
 
+import com.arxivlens.dto.PaperDtos.ImportUrlRequest;
 import com.arxivlens.dto.PaperDtos.ManualPaperRequest;
 import com.arxivlens.dto.PaperDtos.ManualPaperResponse;
 import com.arxivlens.entity.Paper;
@@ -7,6 +8,8 @@ import com.arxivlens.entity.Source;
 import com.arxivlens.repository.PaperRepository;
 import com.arxivlens.repository.SourceRepository;
 import com.arxivlens.web.ApiException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -14,6 +17,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -23,11 +31,22 @@ import java.util.UUID;
 @Transactional(readOnly = true)
 public class PaperService {
 
+    private static final Logger log = LoggerFactory.getLogger(PaperService.class);
+
     /** Abstract truncation point. Keeps the preview card readable without dumping the whole body. */
     private static final int ABSTRACT_PREVIEW_CHARS = 500;
 
+    /** Cap on the HTML response we'll buffer while extracting article text. */
+    private static final long URL_FETCH_MAX_BYTES = 5L * 1024 * 1024; // 5 MB
+
     private final PaperRepository papers;
     private final SourceRepository sources;
+
+    /** {@code ALWAYS} so we follow HTTP→HTTPS upgrades silently like every browser does. */
+    private final HttpClient http = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .followRedirects(HttpClient.Redirect.ALWAYS)
+            .build();
 
     public PaperService(PaperRepository papers, SourceRepository sources) {
         this.papers = papers;
@@ -99,6 +118,120 @@ public class PaperService {
                 authors,
                 p.getPublishedAt()
         );
+    }
+
+    /**
+     * Fetches the URL server-side, extracts a title + main content via
+     * {@link HtmlExtractor}, and saves the result as a Paper. One round-trip
+     * for the user; the result flows through the same preview / translate /
+     * AI-summary path as anything else.
+     *
+     * <p>Paywalled pages (e.g. hbr.org) only return the public teaser to an
+     * anonymous fetch, so the saved content will be whatever the server sees
+     * without subscriber cookies. The user can fall back to
+     * {@link #createManual(ManualPaperRequest)} for full subscriber text.
+     */
+    @Transactional
+    public ManualPaperResponse importFromUrl(ImportUrlRequest req) {
+        Source src = sources.findById(req.sourceId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Source not found"));
+        if (!Boolean.TRUE.equals(src.getEnabled())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Source \"" + src.getCode() + "\" is disabled. Enable it in Admin before importing articles.");
+        }
+
+        String html = fetchHtml(req.url());
+        HtmlExtractor.ExtractedArticle extracted = HtmlExtractor.extract(html);
+
+        if (extracted.title() == null || extracted.title().isBlank()) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Couldn't extract a title from that URL. Paste the article manually instead.");
+        }
+        if (extracted.content() == null || extracted.content().isBlank()) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Couldn't extract article content from that URL — the page may be paywalled or "
+                            + "rendered entirely in JavaScript. Paste the article text manually instead.");
+        }
+
+        String externalId = "manual-" + UUID.randomUUID();
+        String body = extracted.content().trim();
+        String abstractText = body.length() > ABSTRACT_PREVIEW_CHARS
+                ? body.substring(0, ABSTRACT_PREVIEW_CHARS).trim() + "…"
+                : body;
+
+        Paper p = new Paper();
+        p.setSource(src);
+        p.setSourceId(src.getId());
+        p.setExternalId(externalId);
+        p.setTitle(extracted.title().trim());
+        p.setAuthorsJson("[]");
+        p.setAbstractText(abstractText);
+        p.setIntroduction(body);
+        p.setUrl(req.url());
+        p.setPdfUrl(null);
+        p.setTopicCode(blankToNull(req.topicCode()));
+        p.setPublishedAt(extracted.publishedAt() != null ? extracted.publishedAt() : Instant.now());
+        papers.save(p);
+
+        return new ManualPaperResponse(
+                p.getId(),
+                p.getExternalId(),
+                p.getTitle(),
+                List.of(),
+                p.getPublishedAt()
+        );
+    }
+
+    private String fetchHtml(String url) {
+        URI uri;
+        try {
+            uri = URI.create(url);
+        } catch (IllegalArgumentException e) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid URL: " + url);
+        }
+        if (!"http".equalsIgnoreCase(uri.getScheme()) && !"https".equalsIgnoreCase(uri.getScheme())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "URL must use http or https");
+        }
+
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(uri)
+                .timeout(Duration.ofSeconds(20))
+                // Several CDNs (HBR's included) serve a stripped-down page to default
+                // Java User-Agents. Mimic a real browser so we get the same HTML a
+                // logged-out visitor would see.
+                .header("User-Agent",
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 "
+                                + "(KHTML, like Gecko) Version/17.4 Safari/605.1.15")
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                .header("Accept-Language", "en-US,en;q=0.9,zh-TW;q=0.8,zh;q=0.7")
+                .GET()
+                .build();
+
+        try {
+            HttpResponse<byte[]> res = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
+            if (res.statusCode() / 100 != 2) {
+                throw new ApiException(HttpStatus.BAD_GATEWAY,
+                        "Source URL responded with HTTP " + res.statusCode());
+            }
+            byte[] body = res.body();
+            if (body.length > URL_FETCH_MAX_BYTES) {
+                throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE,
+                        "Page exceeds " + (URL_FETCH_MAX_BYTES / (1024 * 1024)) + " MB — refusing to parse.");
+            }
+            // We don't reliably know the page's charset; UTF-8 is the modern default and
+            // the regex extractor is tolerant of mis-decoded bytes for ASCII metadata.
+            return new String(body, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (ApiException ae) {
+            throw ae;
+        } catch (java.net.http.HttpTimeoutException e) {
+            throw new ApiException(HttpStatus.GATEWAY_TIMEOUT, "Timed out fetching the URL.");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "Fetch interrupted");
+        } catch (Exception e) {
+            log.warn("Failed to fetch URL {}: {}", url, e.getMessage());
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "Couldn't reach that URL: " + e.getMessage());
+        }
     }
 
     private static String blankToNull(String s) {

@@ -6,16 +6,20 @@ import { useT } from "@/lib/i18n";
 import { useUiStore } from "@/store/ui";
 
 /**
- * Button + inline modal for adding a manually-pasted article to a source.
+ * Button + inline modal for adding articles to a manual source.
  *
- * <p>Designed for sources that can't be auto-synced (HBR after we dropped the RSS
- * scraper). The user reads the article in their own subscription, pastes the body
- * here, and the resulting Paper row flows through the same favorite / translate /
- * AI-summary pipeline as machine-fetched papers.
+ * <p>Two tabs:
+ * <ul>
+ *   <li><b>From URL</b> — server fetches the URL and extracts title +
+ *       main body. Good for public articles; paywalled pages will only
+ *       expose their teaser.</li>
+ *   <li><b>Paste content</b> — user pastes the article text directly.
+ *       The only legal path for subscriber-only content (HBR, paid blogs)
+ *       since we can't replay the user's session from a backend HTTP call.</li>
+ * </ul>
  *
- * <p>Self-contained — owns the open/closed state and the form fields. Tells the
- * parent only "an article was added" via {@link Props.onAdded} so the feed can
- * refetch.
+ * <p>Self-contained — owns the open/closed state and the form fields.
+ * Notifies the parent via {@link Props.onAdded} so the feed can refetch.
  */
 interface Props {
   sourceId: number;
@@ -30,39 +34,71 @@ interface ManualResponse {
   publishedAt: string;
 }
 
+type Mode = "url" | "paste";
+
 export default function AddArticleButton({ sourceId, onAdded }: Props) {
   const t = useT();
   const flash = useUiStore((s) => s.flash);
 
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<Mode>("url");
   const [submitting, setSubmitting] = useState(false);
+
+  // URL mode state.
+  const [importUrl, setImportUrl] = useState("");
+
+  // Paste mode state.
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
-  const [url, setUrl] = useState("");
+  const [pasteUrl, setPasteUrl] = useState("");
   const [publishedAt, setPublishedAt] = useState(""); // yyyy-mm-dd, empty = "now" on server
   const [content, setContent] = useState("");
-  const firstFieldRef = useRef<HTMLInputElement>(null);
 
-  // Focus the first field when the modal opens; close on Escape.
+  const urlInputRef = useRef<HTMLInputElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  // Focus first field on tab switch / open; close on Escape.
   useEffect(() => {
     if (!open) return;
-    firstFieldRef.current?.focus();
+    if (mode === "url") urlInputRef.current?.focus();
+    else titleInputRef.current?.focus();
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open]);
+  }, [open, mode]);
 
   function resetForm() {
+    setImportUrl("");
     setTitle("");
     setAuthor("");
-    setUrl("");
+    setPasteUrl("");
     setPublishedAt("");
     setContent("");
   }
 
-  async function onSubmit(e: React.FormEvent) {
+  async function submitUrl(e: React.FormEvent) {
+    e.preventDefault();
+    if (!importUrl.trim()) return;
+    setSubmitting(true);
+    try {
+      await apiFetch<ManualResponse>("/papers/import-url", {
+        method: "POST",
+        body: { sourceId, url: importUrl.trim() },
+      });
+      flash(t("feed.add_article_added"), "success");
+      resetForm();
+      setOpen(false);
+      onAdded?.();
+    } catch (err) {
+      flash(err instanceof Error ? err.message : "Import failed", "error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitPaste(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim() || !content.trim()) return;
     setSubmitting(true);
@@ -73,9 +109,8 @@ export default function AddArticleButton({ sourceId, onAdded }: Props) {
           sourceId,
           title: title.trim(),
           content: content.trim(),
-          url: url.trim() || undefined,
+          url: pasteUrl.trim() || undefined,
           author: author.trim() || undefined,
-          // Local date input → midnight UTC ISO string. Server falls back to "now" when omitted.
           publishedAt: publishedAt ? new Date(publishedAt + "T00:00:00Z").toISOString() : undefined,
         },
       });
@@ -102,7 +137,6 @@ export default function AddArticleButton({ sourceId, onAdded }: Props) {
 
       {open && (
         <div
-          // Click on the backdrop dismisses; clicks inside the dialog stop propagation.
           onClick={() => setOpen(false)}
           className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4 py-8 overflow-y-auto"
           role="dialog"
@@ -116,73 +150,163 @@ export default function AddArticleButton({ sourceId, onAdded }: Props) {
             <h2 id="add-article-title" className="text-lg font-semibold">
               {t("feed.add_article_heading")}
             </h2>
-            <p className="mt-1 text-xs text-zinc-500">{t("feed.add_article_hint")}</p>
 
-            <form onSubmit={onSubmit} className="mt-4 space-y-3" aria-busy={submitting}>
-              <Field
-                label={t("feed.add_article_title")}
-                required
-                value={title}
-                onChange={setTitle}
-                inputRef={firstFieldRef}
-              />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Field
-                  label={t("feed.add_article_author")}
-                  value={author}
-                  onChange={setAuthor}
-                  placeholder={t("feed.add_article_author_placeholder")}
+            {/* Tabs */}
+            <div role="tablist" aria-label="Add article mode" className="mt-4 flex gap-2 text-sm">
+              <TabButton id="url" current={mode} setMode={setMode} label={t("feed.add_tab_url")} />
+              <TabButton id="paste" current={mode} setMode={setMode} label={t("feed.add_tab_paste")} />
+            </div>
+
+            {mode === "url" ? (
+              <form onSubmit={submitUrl} className="mt-4 space-y-3" aria-busy={submitting}>
+                <p className="text-xs text-zinc-500">{t("feed.add_url_hint")}</p>
+                <div>
+                  <label htmlFor="aa_url" className="block text-sm mb-1">
+                    {t("feed.add_url_field")} <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="aa_url"
+                    ref={urlInputRef}
+                    type="url"
+                    required
+                    value={importUrl}
+                    onChange={(e) => setImportUrl(e.target.value)}
+                    placeholder="https://www.hbrtaiwan.com/article/..."
+                    className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  />
+                </div>
+                <DialogFooter
+                  onCancel={() => setOpen(false)}
+                  cancelLabel={t("common.cancel")}
+                  submitLabel={
+                    submitting ? t("feed.add_url_fetching") : t("feed.add_url_save")
+                  }
+                  submitting={submitting}
+                  submitDisabled={!importUrl.trim()}
                 />
+              </form>
+            ) : (
+              <form onSubmit={submitPaste} className="mt-4 space-y-3" aria-busy={submitting}>
+                <p className="text-xs text-zinc-500">{t("feed.add_article_hint")}</p>
                 <Field
-                  label={t("feed.add_article_date")}
-                  type="date"
-                  value={publishedAt}
-                  onChange={setPublishedAt}
-                />
-              </div>
-              <Field
-                label={t("feed.add_article_url")}
-                type="url"
-                value={url}
-                onChange={setUrl}
-                placeholder="https://hbr.org/..."
-              />
-              <div>
-                <label htmlFor="aa_content" className="block text-sm mb-1">
-                  {t("feed.add_article_content")} <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  id="aa_content"
+                  label={t("feed.add_article_title")}
                   required
-                  rows={10}
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder={t("feed.add_article_content_placeholder")}
-                  className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-sm font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  value={title}
+                  onChange={setTitle}
+                  inputRef={titleInputRef}
                 />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="rounded-md bg-zinc-100 dark:bg-zinc-800 px-3 py-1.5 text-sm hover:bg-zinc-200 dark:hover:bg-zinc-700"
-                >
-                  {t("common.cancel")}
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting || !title.trim() || !content.trim()}
-                  className="rounded-md bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 px-3 py-1.5 text-sm disabled:opacity-50"
-                >
-                  {submitting ? t("feed.add_article_saving") : t("feed.add_article_save")}
-                </button>
-              </div>
-            </form>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <Field
+                    label={t("feed.add_article_author")}
+                    value={author}
+                    onChange={setAuthor}
+                    placeholder={t("feed.add_article_author_placeholder")}
+                  />
+                  <Field
+                    label={t("feed.add_article_date")}
+                    type="date"
+                    value={publishedAt}
+                    onChange={setPublishedAt}
+                  />
+                </div>
+                <Field
+                  label={t("feed.add_article_url")}
+                  type="url"
+                  value={pasteUrl}
+                  onChange={setPasteUrl}
+                  placeholder="https://hbr.org/..."
+                />
+                <div>
+                  <label htmlFor="aa_content" className="block text-sm mb-1">
+                    {t("feed.add_article_content")} <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    id="aa_content"
+                    required
+                    rows={10}
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    placeholder={t("feed.add_article_content_placeholder")}
+                    className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-sm font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  />
+                </div>
+                <DialogFooter
+                  onCancel={() => setOpen(false)}
+                  cancelLabel={t("common.cancel")}
+                  submitLabel={
+                    submitting ? t("feed.add_article_saving") : t("feed.add_article_save")
+                  }
+                  submitting={submitting}
+                  submitDisabled={!title.trim() || !content.trim()}
+                />
+              </form>
+            )}
           </div>
         </div>
       )}
     </>
+  );
+}
+
+function TabButton({
+  id,
+  current,
+  setMode,
+  label,
+}: {
+  id: Mode;
+  current: Mode;
+  setMode: (m: Mode) => void;
+  label: string;
+}) {
+  const active = id === current;
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={() => setMode(id)}
+      className={`flex-1 rounded-md px-3 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+        active
+          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+          : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function DialogFooter({
+  onCancel,
+  cancelLabel,
+  submitLabel,
+  submitting,
+  submitDisabled,
+}: {
+  onCancel: () => void;
+  cancelLabel: string;
+  submitLabel: string;
+  submitting: boolean;
+  submitDisabled: boolean;
+}) {
+  return (
+    <div className="flex justify-end gap-2 pt-2">
+      <button
+        type="button"
+        onClick={onCancel}
+        className="rounded-md bg-zinc-100 dark:bg-zinc-800 px-3 py-1.5 text-sm hover:bg-zinc-200 dark:hover:bg-zinc-700"
+      >
+        {cancelLabel}
+      </button>
+      <button
+        type="submit"
+        disabled={submitting || submitDisabled}
+        className="rounded-md bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 px-3 py-1.5 text-sm disabled:opacity-50"
+      >
+        {submitLabel}
+      </button>
+    </div>
   );
 }
 

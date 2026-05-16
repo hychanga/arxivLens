@@ -1,5 +1,6 @@
 package com.arxivlens.controller;
 
+import com.arxivlens.dto.PaperDtos.ImportUrlRequest;
 import com.arxivlens.dto.PaperDtos.ManualPaperRequest;
 import com.arxivlens.dto.PaperDtos.ManualPaperResponse;
 import com.arxivlens.entity.Paper;
@@ -77,5 +78,15 @@ public class PaperController {
     @PostMapping("/manual")
     public ResponseEntity<ManualPaperResponse> createManual(@Valid @RequestBody ManualPaperRequest req) {
         return ResponseEntity.status(201).body(service.createManual(req));
+    }
+
+    /**
+     * Fetches the URL server-side, extracts title + main content, and saves it.
+     * For public pages only — paywalled sources fall through to the public
+     * teaser, which is rarely useful. Returns the same shape as /manual.
+     */
+    @PostMapping("/import-url")
+    public ResponseEntity<ManualPaperResponse> importFromUrl(@Valid @RequestBody ImportUrlRequest req) {
+        return ResponseEntity.status(201).body(service.importFromUrl(req));
     }
 }
