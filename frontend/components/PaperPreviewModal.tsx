@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useUiStore } from "@/store/ui";
 import { useDownloadsStore } from "@/store/downloads";
+import { useFavoritesStore } from "@/store/favorites";
 import { useLocaleStore } from "@/store/locale";
+import { usePapersStore } from "@/store/papers";
 import { useTranslationsStore } from "@/store/translations";
 import { parseAuthors, fmtDate } from "@/lib/format";
 import { openCachedPdf } from "@/lib/pdf";
+import { apiFetch } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { detectLanguage, sameLanguageFamily } from "@/lib/lang";
 
@@ -14,9 +17,15 @@ export default function PaperPreviewModal() {
   const preview = useUiStore((s) => s.preview);
   const close = useUiStore((s) => s.closePreview);
   const flash = useUiStore((s) => s.flash);
+  const ask = useUiStore((s) => s.ask);
   const addDownload = useDownloadsStore((s) => s.add);
+  const refetchFavorites = useFavoritesStore((s) => s.load);
+  const refetchDownloads = useDownloadsStore((s) => s.load);
+  const refetchPapers = usePapersStore((s) => s.fetch);
   const locale = useLocaleStore((s) => s.locale);
   const t = useT();
+
+  const [deleting, setDeleting] = useState(false);
 
   const paperId = preview.paper?.id ?? null;
   const translation = useTranslationsStore((s) =>
@@ -64,6 +73,36 @@ export default function PaperPreviewModal() {
   const displayTitle = translation?.title ?? p.title;
   const displayAbstract = translation?.abstract ?? p.abstract;
   const isTranslated = needsTranslation && translation != null;
+
+  // Manual-added papers (external_id starts with "manual-") can be deleted by
+  // the user — they came in via the paste / URL-import flow and have no
+  // upstream source to recover them from. Sync-fetched papers don't expose
+  // this button; nuking those is the admin-page "Clear paper cache" affordance.
+  const isManual = preview.paper?.externalId?.startsWith("manual-") ?? false;
+
+  async function onDelete() {
+    if (paperId == null) return;
+    ask({
+      title: t("modal.delete_confirm_title"),
+      message: t("modal.delete_confirm_message"),
+      confirmLabel: t("modal.delete"),
+      danger: true,
+      onConfirm: async () => {
+        setDeleting(true);
+        try {
+          await apiFetch<void>(`/papers/${paperId}`, { method: "DELETE" });
+          // Refresh anything that may have shown this paper.
+          await Promise.all([refetchPapers(), refetchFavorites(), refetchDownloads()]);
+          flash(t("modal.delete_done"), "success");
+          close();
+        } catch (e) {
+          flash(e instanceof Error ? e.message : "Delete failed", "error");
+        } finally {
+          setDeleting(false);
+        }
+      },
+    });
+  }
 
   async function onTranslate() {
     if (paperId == null) return;
@@ -132,6 +171,16 @@ export default function PaperPreviewModal() {
           <div className="flex items-center gap-3">
             <span>{p.externalId}</span>
             {p.pages != null && <span>· {p.pages} pages</span>}
+            {isManual && (
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={deleting}
+                className="rounded-md text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 px-2 py-1 text-xs disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+              >
+                {deleting ? t("modal.deleting") : t("modal.delete")}
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {preview.cached ? (

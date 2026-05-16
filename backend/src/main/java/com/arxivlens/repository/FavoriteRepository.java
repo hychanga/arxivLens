@@ -24,6 +24,9 @@ public interface FavoriteRepository extends JpaRepository<Favorite, Long> {
 
     boolean existsByUserIdAndPaper_Id(Long userId, Long paperId);
 
+    /** Used by paper-delete cascade — all favorites for the paper, across all users. */
+    List<Favorite> findByPaper_Id(Long paperId);
+
     @EntityGraph(attributePaths = "paper")
     @Override
     Optional<Favorite> findById(Long id);

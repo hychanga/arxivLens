@@ -8,4 +8,7 @@ import java.util.Optional;
 public interface PaperTranslationRepository extends JpaRepository<PaperTranslation, Long> {
 
     Optional<PaperTranslation> findByPaperIdAndLocale(Long paperId, String locale);
+
+    /** Cascades when the parent Paper is deleted. */
+    void deleteByPaperId(Long paperId);
 }

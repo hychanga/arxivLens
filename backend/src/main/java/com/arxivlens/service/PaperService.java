@@ -3,9 +3,16 @@ package com.arxivlens.service;
 import com.arxivlens.dto.PaperDtos.ImportUrlRequest;
 import com.arxivlens.dto.PaperDtos.ManualPaperRequest;
 import com.arxivlens.dto.PaperDtos.ManualPaperResponse;
+import com.arxivlens.entity.Download;
+import com.arxivlens.entity.Favorite;
 import com.arxivlens.entity.Paper;
 import com.arxivlens.entity.Source;
+import com.arxivlens.repository.AiSummaryRepository;
+import com.arxivlens.repository.DownloadBlobRepository;
+import com.arxivlens.repository.DownloadRepository;
+import com.arxivlens.repository.FavoriteRepository;
 import com.arxivlens.repository.PaperRepository;
+import com.arxivlens.repository.PaperTranslationRepository;
 import com.arxivlens.repository.SourceRepository;
 import com.arxivlens.web.ApiException;
 import org.slf4j.Logger;
@@ -41,6 +48,11 @@ public class PaperService {
 
     private final PaperRepository papers;
     private final SourceRepository sources;
+    private final PaperTranslationRepository translations;
+    private final FavoriteRepository favorites;
+    private final AiSummaryRepository summaries;
+    private final DownloadRepository downloads;
+    private final DownloadBlobRepository blobs;
 
     /** {@code ALWAYS} so we follow HTTP→HTTPS upgrades silently like every browser does. */
     private final HttpClient http = HttpClient.newBuilder()
@@ -48,9 +60,20 @@ public class PaperService {
             .followRedirects(HttpClient.Redirect.ALWAYS)
             .build();
 
-    public PaperService(PaperRepository papers, SourceRepository sources) {
+    public PaperService(PaperRepository papers,
+                        SourceRepository sources,
+                        PaperTranslationRepository translations,
+                        FavoriteRepository favorites,
+                        AiSummaryRepository summaries,
+                        DownloadRepository downloads,
+                        DownloadBlobRepository blobs) {
         this.papers = papers;
         this.sources = sources;
+        this.translations = translations;
+        this.favorites = favorites;
+        this.summaries = summaries;
+        this.downloads = downloads;
+        this.blobs = blobs;
     }
 
     public Page<Paper> findFeed(String sourceCode, Integer days, String topicCode, int page, int size) {
@@ -180,6 +203,43 @@ public class PaperService {
                 List.of(),
                 p.getPublishedAt()
         );
+    }
+
+    /**
+     * Deletes a manually-added paper and everything that references it:
+     * translations, favorites (and their AI summaries), downloads (and their
+     * BLOBs). Restricted to {@code manual-…} papers so we can't accidentally
+     * nuke a paper that {@code ArxivSyncService} would just re-insert with a
+     * new ID — the only place an admin should drop synced papers is the
+     * existing "Clear paper cache" action in Admin.
+     */
+    @Transactional
+    public void delete(Long paperId) {
+        Paper p = papers.findById(paperId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Paper not found"));
+        if (p.getExternalId() == null || !p.getExternalId().startsWith("manual-")) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Only manually-added articles can be deleted from here. "
+                            + "Sync-fetched papers are removed via Admin → Clear paper cache.");
+        }
+
+        // Cascade by hand — none of these tables have FK ON DELETE CASCADE set up,
+        // and we want predictable ordering rather than relying on Hibernate's
+        // delete-orphan heuristics across un-mapped sibling tables.
+        translations.deleteByPaperId(paperId);
+
+        for (Favorite f : favorites.findByPaper_Id(paperId)) {
+            summaries.findByFavoriteId(f.getId()).ifPresent(summaries::delete);
+            favorites.delete(f);
+        }
+
+        for (Download d : downloads.findByPaper_Id(paperId)) {
+            if (blobs.existsById(d.getId())) blobs.deleteById(d.getId());
+            downloads.delete(d);
+        }
+
+        papers.delete(p);
+        log.info("Deleted manual paper {} ({})", paperId, p.getExternalId());
     }
 
     private String fetchHtml(String url) {

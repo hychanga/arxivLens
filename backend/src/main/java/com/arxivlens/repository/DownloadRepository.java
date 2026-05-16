@@ -22,4 +22,7 @@ public interface DownloadRepository extends JpaRepository<Download, Long> {
     long countByUserId(Long userId);
 
     void deleteByUserId(Long userId);
+
+    /** Used by paper-delete cascade — all downloads for the paper, across all users. */
+    List<Download> findByPaper_Id(Long paperId);
 }
