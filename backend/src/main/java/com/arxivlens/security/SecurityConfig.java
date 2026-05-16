@@ -36,15 +36,25 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * Build the AuthenticationManager directly from a {@link DaoAuthenticationProvider}
+     * constructed inline rather than as a separate {@code @Bean}.
+     *
+     * <p>If {@code DaoAuthenticationProvider} is registered as a top-level bean,
+     * Spring Security's {@code InitializeUserDetailsBeanManagerConfigurer} logs a
+     * misleading WARN at every startup:
+     *   <pre>Global AuthenticationManager configured with an AuthenticationProvider bean.
+     *   UserDetailsService beans will not be used by Spring Security for automatically
+     *   configuring username/password login.</pre>
+     * Functionally correct — we DO want our provider used — but the auto-config thinks
+     * we might also be expecting it to wire a default formLogin off the UDS bean.
+     * Inlining the provider stops the auto-config from seeing it as a candidate bean,
+     * which silences the warning at the source.
+     */
     @Bean
-    public DaoAuthenticationProvider daoAuthenticationProvider(AppUserDetailsService uds, PasswordEncoder enc) {
+    public AuthenticationManager authenticationManager(AppUserDetailsService uds, PasswordEncoder enc) {
         DaoAuthenticationProvider provider = new DaoAuthenticationProvider(uds);
         provider.setPasswordEncoder(enc);
-        return provider;
-    }
-
-    @Bean
-    public AuthenticationManager authenticationManager(DaoAuthenticationProvider provider) {
         return new org.springframework.security.authentication.ProviderManager(provider);
     }
 
