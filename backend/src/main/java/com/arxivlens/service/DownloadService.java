@@ -3,19 +3,22 @@ package com.arxivlens.service;
 import com.arxivlens.dto.DownloadDtos.CreateDownloadRequest;
 import com.arxivlens.dto.DownloadDtos.DownloadView;
 import com.arxivlens.entity.Download;
+import com.arxivlens.entity.DownloadBlob;
 import com.arxivlens.entity.Paper;
+import com.arxivlens.repository.DownloadBlobRepository;
 import com.arxivlens.repository.DownloadRepository;
 import com.arxivlens.repository.PaperRepository;
 import com.arxivlens.repository.UserRepository;
 import com.arxivlens.web.ApiException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -23,10 +26,6 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -36,9 +35,6 @@ public class DownloadService {
 
     private static final Logger log = LoggerFactory.getLogger(DownloadService.class);
 
-    /** Where downloaded PDFs land. Relative to {@code user.dir} so the path is reproducible per process. */
-    private static final Path CACHE_ROOT = Paths.get(System.getProperty("user.dir"), "var", "arxivlens", "cache");
-
     /** Hard cap on a single PDF. Anything bigger is rejected mid-stream. */
     private static final long MAX_BYTES = 100L * 1024 * 1024; // 100 MB
 
@@ -46,6 +42,7 @@ public class DownloadService {
     public record CachedPdf(Resource resource, String filename) {}
 
     private final DownloadRepository downloads;
+    private final DownloadBlobRepository blobs;
     private final PaperRepository papers;
     private final UserRepository users;
 
@@ -60,8 +57,10 @@ public class DownloadService {
             .followRedirects(HttpClient.Redirect.ALWAYS)
             .build();
 
-    public DownloadService(DownloadRepository downloads, PaperRepository papers, UserRepository users) {
+    public DownloadService(DownloadRepository downloads, DownloadBlobRepository blobs,
+                           PaperRepository papers, UserRepository users) {
         this.downloads = downloads;
+        this.blobs = blobs;
         this.papers = papers;
         this.users = users;
     }
@@ -77,38 +76,42 @@ public class DownloadService {
     public DownloadView create(Long userId, CreateDownloadRequest req) {
         Paper p = papers.findById(req.paperId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Paper not found"));
-
-        Optional<Download> existing = downloads.findByUserIdAndPaper_Id(userId, p.getId());
-        if (existing.isPresent()) return DownloadView.of(existing.get());
-
         if (p.getPdfUrl() == null || p.getPdfUrl().isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST,
                     "This paper has no downloadable PDF. " +
                     "Demo seed papers ship without PDF links — run a sync to fetch real papers, " +
                     "or pick another paper from a source that exposes PDFs.");
         }
-
         String url = normalizeArxivUrl(p.getPdfUrl());
-        Path target = CACHE_ROOT.resolve(safeFilename(p.getExternalId()) + ".pdf");
-        long bytes;
-        try {
-            Files.createDirectories(target.getParent());
-            bytes = (Files.exists(target) && Files.size(target) > 0)
-                    ? Files.size(target)
-                    : downloadToFile(url, target);
-        } catch (IOException e) {
-            throw new ApiException(HttpStatus.BAD_GATEWAY, "Download failed: " + e.getMessage());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "Download interrupted");
+
+        Optional<Download> existing = downloads.findByUserIdAndPaper_Id(userId, p.getId());
+        if (existing.isPresent()) {
+            Download d = existing.get();
+            // Self-heal rows that pre-date BLOB storage: their file_path pointed at
+            // a filesystem cache that Render's ephemeral disk threw away. Refetching
+            // makes "Open cached" work again without forcing the user to delete + redo.
+            if (!blobs.existsById(d.getId())) {
+                byte[] bytes = fetchOrThrow(url);
+                saveBlob(d.getId(), bytes);
+                d.setSizeMb(bytes.length / (1024.0 * 1024.0));
+                downloads.save(d);
+            }
+            return DownloadView.of(d);
         }
+
+        byte[] bytes = fetchOrThrow(url);
 
         Download d = new Download();
         d.setUser(users.getReferenceById(userId));
         d.setPaper(p);
-        d.setFilePath(target.toString());
-        d.setSizeMb(bytes / (1024.0 * 1024.0));
+        // file_path is legacy from the on-disk era. The column is still NOT NULL in the
+        // existing schema (and we can't relax it via ddl-auto=update), so we keep writing
+        // a stable marker that's grep-able when scanning logs / dumps.
+        d.setFilePath("blob:" + p.getExternalId());
+        d.setSizeMb(bytes.length / (1024.0 * 1024.0));
         downloads.save(d);
+
+        saveBlob(d.getId(), bytes);
         return DownloadView.of(d);
     }
 
@@ -119,25 +122,19 @@ public class DownloadService {
             throw new ApiException(HttpStatus.NOT_FOUND, "Download not found");
         }
         Download d = opt.get();
-        // Best-effort file cleanup; row is the source of truth so don't fail the request on IO error.
-        try {
-            Path p = Paths.get(d.getFilePath());
-            if (Files.exists(p)) Files.deleteIfExists(p);
-        } catch (IOException e) {
-            log.warn("Failed to delete cached PDF {}: {}", d.getFilePath(), e.getMessage());
+        if (blobs.existsById(d.getId())) {
+            blobs.deleteById(d.getId());
         }
         downloads.deleteByUserIdAndPaper_Id(userId, paperId);
     }
 
     @Transactional
     public long clear(Long userId) {
-        long count = downloads.countByUserId(userId);
-        for (Download d : downloads.findByUserIdOrderByDownloadedAtDesc(userId)) {
-            try {
-                Path p = Paths.get(d.getFilePath());
-                if (Files.exists(p)) Files.deleteIfExists(p);
-            } catch (IOException e) {
-                log.warn("Failed to delete cached PDF {}: {}", d.getFilePath(), e.getMessage());
+        List<Download> userDownloads = downloads.findByUserIdOrderByDownloadedAtDesc(userId);
+        long count = userDownloads.size();
+        for (Download d : userDownloads) {
+            if (blobs.existsById(d.getId())) {
+                blobs.deleteById(d.getId());
             }
         }
         downloads.deleteByUserId(userId);
@@ -147,23 +144,44 @@ public class DownloadService {
     /**
      * Loads a previously-cached PDF for the {@code paperId} owned by {@code userId} so the
      * controller can stream it inline back to the browser. Returns 404/410 with a clear
-     * message rather than a generic 500 when the row exists but the file is gone.
+     * message rather than a generic 500 when the row exists but the blob is gone.
      */
     @Transactional(readOnly = true)
     public CachedPdf serveCachedFile(Long userId, Long paperId) {
         Download d = downloads.findByUserIdAndPaper_Id(userId, paperId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND,
                         "Not in your library — download the paper first."));
-        Path path = Paths.get(d.getFilePath());
-        if (!Files.exists(path) || !Files.isRegularFile(path) || !Files.isReadable(path)) {
-            throw new ApiException(HttpStatus.GONE,
-                    "Cached PDF is missing on disk. Delete this entry and re-download from Favorites.");
-        }
+        DownloadBlob b = blobs.findById(d.getId())
+                .orElseThrow(() -> new ApiException(HttpStatus.GONE,
+                        "PDF is no longer cached. Click \"Download PDF\" on this paper in Favorites to refetch."));
         String filename = safeFilename(d.getPaper().getExternalId()) + ".pdf";
-        return new CachedPdf(new FileSystemResource(path), filename);
+        return new CachedPdf(new ByteArrayResource(b.getPdfData()), filename);
     }
 
-    private long downloadToFile(String url, Path target) throws IOException, InterruptedException {
+    private void saveBlob(Long downloadId, byte[] bytes) {
+        DownloadBlob b = new DownloadBlob();
+        b.setDownloadId(downloadId);
+        b.setPdfData(bytes);
+        blobs.save(b);
+    }
+
+    private byte[] fetchOrThrow(String url) {
+        try {
+            return downloadToBytes(url);
+        } catch (IOException e) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "Download failed: " + e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "Download interrupted");
+        }
+    }
+
+    /**
+     * Streams the remote PDF into memory. We buffer because the bytes go to a
+     * BLOB column, not a file — and the row is the source of truth. Cap at
+     * {@link #MAX_BYTES} so a runaway server can't bloat our heap.
+     */
+    private byte[] downloadToBytes(String url) throws IOException, InterruptedException {
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .timeout(Duration.ofSeconds(60))
@@ -180,22 +198,19 @@ public class DownloadService {
             throw new IOException("HTTP " + res.statusCode() + " for " + url);
         }
 
-        try (InputStream in = res.body();
-             OutputStream out = Files.newOutputStream(target,
-                     StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
+        try (InputStream in = res.body()) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream(64 * 1024);
             byte[] buf = new byte[8192];
             long total = 0;
             int n;
             while ((n = in.read(buf)) > 0) {
                 total += n;
                 if (total > MAX_BYTES) {
-                    out.close();
-                    Files.deleteIfExists(target);
                     throw new IOException("PDF exceeds " + (MAX_BYTES / (1024 * 1024)) + " MB cap");
                 }
                 out.write(buf, 0, n);
             }
-            return total;
+            return out.toByteArray();
         }
     }
 

@@ -55,6 +55,15 @@ public class SchemaBootstrap {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """;
 
+    private static final String CREATE_DOWNLOAD_BLOBS = """
+            CREATE TABLE IF NOT EXISTS download_blobs (
+                download_id BIGINT      NOT NULL,
+                pdf_data    LONGBLOB    NOT NULL,
+                created_at  DATETIME(6) NOT NULL,
+                PRIMARY KEY (download_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """;
+
     /**
      * Legacy column names that previous schemas used (and that
      * {@code ddl-auto=update} never drops, by design). When a fresh
@@ -80,6 +89,7 @@ public class SchemaBootstrap {
             }
         }
         createTable("password_reset_tokens", CREATE_PASSWORD_RESET_TOKENS);
+        createTable("download_blobs", CREATE_DOWNLOAD_BLOBS);
     }
 
     /**
