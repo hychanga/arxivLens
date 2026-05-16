@@ -40,14 +40,23 @@ export default function PaperPreviewModal() {
 
   // What language is the article actually in? Drives the Translate button's
   // visibility — show it whenever the article isn't already in the user's UI
-  // language. A Chinese article viewed in an English UI now offers translation
-  // (the old rule only triggered for non-English UI, which missed this case
-  // entirely once we added pasted / imported foreign-language articles).
+  // language.
+  //
+  // We sample the BODY (introduction) first rather than title+abstract: HBR
+  // Taiwan ships an English og:title even for Chinese articles, so reading
+  // the title would invert the detection ("English title + chrome leftovers
+  // skews detection to en even though 95% of the body is Chinese"). The full
+  // body is hundreds of chars long, which makes the script-ratio heuristic
+  // unambiguous. Abstract and title are only used as fallbacks for arxiv-style
+  // papers that don't store a body.
   const articleLang = useMemo(() => {
     if (!preview.paper) return "other" as const;
-    return detectLanguage(
-      `${preview.paper.title ?? ""} ${preview.paper.abstract ?? ""}`
-    );
+    const sample =
+      preview.paper.introduction?.trim() ||
+      preview.paper.abstract?.trim() ||
+      preview.paper.title?.trim() ||
+      "";
+    return detectLanguage(sample);
   }, [preview.paper]);
   const needsTranslation = preview.paper != null && !sameLanguageFamily(articleLang, locale);
 
