@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -54,7 +55,9 @@ public class FavoriteController {
     }
 
     @PostMapping("/{id}/summary")
-    public AiSummaryView generateSummary(@PathVariable Long id) {
-        return summaries.generate(AuthUtil.currentUserId(), id);
+    public AiSummaryView generateSummary(
+            @PathVariable Long id,
+            @RequestParam(name = "locale", required = false) String locale) {
+        return summaries.generate(AuthUtil.currentUserId(), id, locale);
     }
 }

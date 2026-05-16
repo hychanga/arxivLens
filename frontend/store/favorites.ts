@@ -13,7 +13,7 @@ interface FavoritesState {
   add: (paperId: number, note?: string) => Promise<Favorite>;
   remove: (favoriteId: number) => Promise<void>;
   updateNote: (favoriteId: number, note: string) => Promise<Favorite>;
-  generateSummary: (favoriteId: number) => Promise<AiSummary>;
+  generateSummary: (favoriteId: number, locale: string) => Promise<AiSummary>;
   isFavoritedByPaperId: (paperId: number) => boolean;
   /** Wipe state so the next user starts clean. Called from auth.logout. */
   reset: () => void;
@@ -62,10 +62,11 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
     return updated;
   },
 
-  generateSummary: async (favoriteId) => {
-    const s = await apiFetch<AiSummary>(`/favorites/${favoriteId}/summary`, {
-      method: "POST",
-    });
+  generateSummary: async (favoriteId, locale) => {
+    const s = await apiFetch<AiSummary>(
+      `/favorites/${favoriteId}/summary?locale=${encodeURIComponent(locale)}`,
+      { method: "POST" }
+    );
     set({
       items: get().items.map((f) => (f.id === favoriteId ? { ...f, summary: s } : f)),
     });

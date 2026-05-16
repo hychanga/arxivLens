@@ -7,8 +7,12 @@ public interface AiClient {
     /** True if the underlying provider has been configured (e.g. API key present). */
     boolean isConfigured();
 
-    /** Generates a structured summary for the given paper. Implementations decide the exact prompt. */
-    AiSummaryResult summarize(Paper paper);
+    /**
+     * Generates a structured summary for the given paper, written in {@code targetLanguage}
+     * (e.g. {@code "English"}, {@code "Traditional Chinese (Taiwan)"}). Implementations decide
+     * the exact prompt but must respect the requested language.
+     */
+    AiSummaryResult summarize(Paper paper, String targetLanguage);
 
     /**
      * Translates a paper's {@code title}, {@code abstractText}, and (optional)

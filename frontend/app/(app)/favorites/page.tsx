@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useFavoritesStore } from "@/store/favorites";
 import { useDownloadsStore } from "@/store/downloads";
+import { useLocaleStore } from "@/store/locale";
 import { usePreferencesStore } from "@/store/preferences";
 import { useSourcesStore, findSourceById } from "@/store/sources";
 import { useUiStore } from "@/store/ui";
@@ -26,6 +27,7 @@ export default function FavoritesPage() {
   const openPreview = useUiStore((s) => s.openPreview);
   const ask = useUiStore((s) => s.ask);
   const flash = useUiStore((s) => s.flash);
+  const locale = useLocaleStore((s) => s.locale);
   const t = useT();
 
   const [editingNote, setEditingNote] = useState<number | null>(null);
@@ -41,11 +43,17 @@ export default function FavoritesPage() {
 
   const cachedPaperIds = new Set(downloads.map((d) => d.paper.id));
 
+  // Only papers with a real PDF can be downloaded — HBR / manual articles have
+  // no pdfUrl, so we filter them out instead of firing failing requests.
+  const downloadable = useMemo(
+    () => items.filter((f) => f.paper.pdfUrl && !cachedPaperIds.has(f.paper.id)),
+    [items, cachedPaperIds]
+  );
+
   async function handleDownloadAll() {
     setDownloadingAll(true);
     let ok = 0;
-    for (const f of items) {
-      if (cachedPaperIds.has(f.paper.id)) continue;
+    for (const f of downloadable) {
       try {
         await addDownload(f.paper.id);
         ok++;
@@ -62,7 +70,7 @@ export default function FavoritesPage() {
           {t("favorites.heading")}{currentSource ? <span className="ml-2 text-sm font-normal text-zinc-500">· {currentSource.name}</span> : null}
         </h1>
         <span className="text-sm text-zinc-500">{t("favorites.count", { n: items.length })}</span>
-        {items.length > 0 && (
+        {downloadable.length > 0 && (
           <button
             onClick={handleDownloadAll}
             disabled={downloadingAll}
@@ -163,7 +171,7 @@ export default function FavoritesPage() {
                   >
                     {t("favorites.preview")}
                   </button>
-                  {cached && (
+                  {f.paper.pdfUrl && cached && (
                     <button
                       onClick={async () => {
                         try {
@@ -177,7 +185,7 @@ export default function FavoritesPage() {
                       {t("favorites.open_cached")}
                     </button>
                   )}
-                  {!cached && (
+                  {f.paper.pdfUrl && !cached && (
                     <button
                       onClick={async () => {
                         try {
@@ -192,11 +200,21 @@ export default function FavoritesPage() {
                       {t("favorites.download_pdf")}
                     </button>
                   )}
+                  {!f.paper.pdfUrl && f.paper.url && (
+                    <a
+                      href={f.paper.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded border border-zinc-300 dark:border-zinc-700 px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    >
+                      {t("modal.open_on_source")}
+                    </a>
+                  )}
                   <button
                     onClick={async () => {
                       setGeneratingFor(f.id);
                       try {
-                        await generateSummary(f.id);
+                        await generateSummary(f.id, locale);
                         flash("Summary generated", "success");
                       } catch (e) {
                         flash(e instanceof Error ? e.message : "Summary unavailable", "error");

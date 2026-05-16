@@ -27,7 +27,7 @@ public class StubAiClient implements AiClient {
     }
 
     @Override
-    public AiSummaryResult summarize(Paper paper) {
+    public AiSummaryResult summarize(Paper paper, String targetLanguage) {
         throw new ApiException(HttpStatus.NOT_IMPLEMENTED,
                 "AI summary not configured. Set GEMINI_API_KEY in the environment and restart the server.");
     }

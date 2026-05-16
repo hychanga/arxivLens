@@ -82,7 +82,7 @@ public class GeminiAiClient implements AiClient {
     }
 
     @Override
-    public AiSummaryResult summarize(Paper paper) {
+    public AiSummaryResult summarize(Paper paper, String targetLanguage) {
         String apiKey = requireApiKey();
         String url = BASE + props.ai().gemini().model() + ":generateContent?key="
                 + URLEncoder.encode(apiKey, StandardCharsets.UTF_8);
@@ -91,7 +91,7 @@ public class GeminiAiClient implements AiClient {
         ArrayNode contents = body.putArray("contents");
         ObjectNode content = contents.addObject();
         ArrayNode parts = content.putArray("parts");
-        parts.addObject().put("text", buildPrompt(paper));
+        parts.addObject().put("text", buildPrompt(paper, targetLanguage));
 
         ObjectNode gc = body.putObject("generationConfig");
         gc.put("responseMimeType", "application/json");
@@ -304,25 +304,22 @@ public class GeminiAiClient implements AiClient {
         }
     }
 
-    private static String buildPrompt(Paper p) {
+    private static String buildPrompt(Paper p, String targetLanguage) {
+        String lang = (targetLanguage == null || targetLanguage.isBlank()) ? "English" : targetLanguage;
         StringBuilder sb = new StringBuilder(2048);
-        sb.append("You are a research-paper assistant. Read the input below and respond with ONLY a JSON object that exactly matches the schema. No prose, no markdown fences.\n\n");
+        sb.append("You are a research-paper assistant. Read the article's title and abstract below and produce a structured summary.\n");
+        sb.append("Write the summary, key_points, tags, and difficulty IN ").append(lang).append(".\n");
+        sb.append("difficulty must be the ").append(lang).append(" equivalent of Beginner / Intermediate / Advanced.\n");
+        sb.append("Respond with ONLY a JSON object that exactly matches the schema. No prose, no markdown fences.\n\n");
         sb.append("=== INPUT ===\n");
-        sb.append("Title: ").append(p.getTitle()).append("\n");
-        sb.append("Authors: ").append(p.getAuthorsJson()).append("\n\n");
-        sb.append("Abstract:\n").append(p.getAbstractText()).append("\n");
-        if (p.getIntroduction() != null && !p.getIntroduction().isBlank()) {
-            sb.append("\nIntroduction:\n").append(p.getIntroduction()).append("\n");
-        }
-        if (p.getConclusion() != null && !p.getConclusion().isBlank()) {
-            sb.append("\nConclusion:\n").append(p.getConclusion()).append("\n");
-        }
+        sb.append("Title: ").append(p.getTitle() == null ? "" : p.getTitle()).append("\n\n");
+        sb.append("Abstract:\n").append(p.getAbstractText() == null ? "" : p.getAbstractText()).append("\n");
         sb.append("\n=== SCHEMA ===\n");
         sb.append("{\n");
-        sb.append("  \"summary\":          string,    // 1-2 sentences, <= 200 chars\n");
-        sb.append("  \"key_points\":       string[],  // 3-5 items, each <= 80 chars\n");
-        sb.append("  \"tags\":             string[],  // 3-5 short topical tags (lowercase, no #)\n");
-        sb.append("  \"difficulty\":       string,    // one of: \"Beginner\", \"Intermediate\", \"Advanced\"\n");
+        sb.append("  \"summary\":          string,    // 1-2 sentences, <= 200 chars, in ").append(lang).append("\n");
+        sb.append("  \"key_points\":       string[],  // 3-5 items, each <= 80 chars, in ").append(lang).append("\n");
+        sb.append("  \"tags\":             string[],  // 3-5 short topical tags in ").append(lang).append(" (lowercase, no #)\n");
+        sb.append("  \"difficulty\":       string,    // Beginner / Intermediate / Advanced equivalent in ").append(lang).append("\n");
         sb.append("  \"reading_time_min\": integer    // estimated minutes to read in full\n");
         sb.append("}\n");
         return sb.toString();
