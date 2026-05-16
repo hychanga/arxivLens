@@ -159,9 +159,9 @@ export default function PaperPreviewModal() {
           <h2 className="text-xl font-semibold leading-tight">{displayTitle}</h2>
           {authors.length > 0 && <p className="text-sm text-zinc-500 mt-1">{authors.join(", ")}</p>}
 
-          {needsTranslation && (
-            <div className="mt-3">
-              {!isTranslated ? (
+          <div className="mt-3 flex items-center gap-2 flex-wrap">
+            {needsTranslation && (
+              !isTranslated ? (
                 <button
                   type="button"
                   onClick={onTranslate}
@@ -178,9 +178,36 @@ export default function PaperPreviewModal() {
                 >
                   {t("common.show_original")}
                 </button>
-              )}
-            </div>
-          )}
+              )
+            )}
+            {p.url && (
+              <a
+                href={p.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-md border border-zinc-300 dark:border-zinc-700 px-3 py-1 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              >
+                {t("modal.open_on_source")}
+              </a>
+            )}
+            {isManual && (
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={deleting}
+                className="rounded-md text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 px-3 py-1 text-xs disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+              >
+                {deleting ? t("modal.deleting") : t("modal.delete")}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={close}
+              className="ml-auto rounded-md bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 px-3 py-1 text-xs"
+            >
+              {t("common.close")}
+            </button>
+          </div>
         </header>
 
         <section className="p-5 space-y-5 text-sm">
@@ -195,16 +222,6 @@ export default function PaperPreviewModal() {
           <div className="flex items-center gap-3">
             <span>{p.externalId}</span>
             {p.pages != null && <span>· {p.pages} pages</span>}
-            {isManual && (
-              <button
-                type="button"
-                onClick={onDelete}
-                disabled={deleting}
-                className="rounded-md text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 px-2 py-1 text-xs disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-              >
-                {deleting ? t("modal.deleting") : t("modal.delete")}
-              </button>
-            )}
           </div>
           <div className="flex items-center gap-2">
             {preview.cached ? (
@@ -235,22 +252,6 @@ export default function PaperPreviewModal() {
                 {t("modal.download_save")}
               </button>
             ) : null}
-            {p.url && (
-              <a
-                href={p.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-md border border-zinc-300 dark:border-zinc-700 px-3 py-1.5"
-              >
-                {t("modal.open_on_source")}
-              </a>
-            )}
-            <button
-              onClick={close}
-              className="rounded-md bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 px-3 py-1.5"
-            >
-              {t("common.close")}
-            </button>
           </div>
         </footer>
       </div>
