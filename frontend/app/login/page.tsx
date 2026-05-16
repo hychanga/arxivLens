@@ -128,14 +128,7 @@ function LoginPageInner() {
           </p>
         )}
 
-        {mode !== "forgot" && (
-          <div role="tablist" aria-label="Auth mode" className="mt-6 flex gap-2 text-sm">
-            <ModeTab id="login"    current={mode} setMode={setMode} label={t("login.tab_login")} />
-            <ModeTab id="register" current={mode} setMode={setMode} label={t("login.tab_register")} />
-          </div>
-        )}
-
-        <form action={formAction} className="mt-5 space-y-4" aria-busy={pending}>
+        <form action={formAction} className="mt-6 space-y-4" aria-busy={pending}>
           <input type="hidden" name="mode" value={mode} />
 
           {mode === "register" && (
@@ -190,12 +183,12 @@ function LoginPageInner() {
           <button
             type="submit"
             disabled={pending}
-            className="w-full rounded-md bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 py-2 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            className="w-full rounded-md bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 py-2.5 text-sm font-medium shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
             {pending
               ? t("login.please_wait")
               : mode === "login"
-              ? t("login.signin")
+              ? t("login.signin_password")
               : mode === "register"
               ? t("login.create")
               : t("login.forgot_send")}
@@ -254,7 +247,35 @@ function LoginPageInner() {
         )}
 
         {mode !== "forgot" && (
-          <p className="mt-6 text-xs text-zinc-500">
+          <div className="mt-6 pt-5 border-t border-zinc-200 dark:border-zinc-800 text-center text-sm">
+            {mode === "login" ? (
+              <>
+                <span className="text-zinc-500">{t("login.no_account")} </span>
+                <button
+                  type="button"
+                  onClick={() => setMode("register")}
+                  className="font-medium text-blue-600 dark:text-blue-400 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+                >
+                  {t("login.tab_register")}
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-zinc-500">{t("login.have_account")} </span>
+                <button
+                  type="button"
+                  onClick={() => setMode("login")}
+                  className="font-medium text-blue-600 dark:text-blue-400 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+                >
+                  {t("login.tab_login")}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {mode === "login" && (
+          <p className="mt-4 text-xs text-zinc-500 text-center">
             {t("login.demo_hint")} <code className="font-mono">demo@arxivlens.local</code> / <code className="font-mono">demo123</code>
           </p>
         )}
@@ -313,35 +334,6 @@ function ProviderIcon({ provider }: { provider: "google" | "apple" }) {
     >
       <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
     </svg>
-  );
-}
-
-function ModeTab({
-  id,
-  current,
-  setMode,
-  label,
-}: {
-  id: Mode;
-  current: Mode;
-  setMode: (m: Mode) => void;
-  label: string;
-}) {
-  const active = current === id;
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={() => setMode(id)}
-      className={`flex-1 rounded-md px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
-        active
-          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-          : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300"
-      }`}
-    >
-      {label}
-    </button>
   );
 }
 
