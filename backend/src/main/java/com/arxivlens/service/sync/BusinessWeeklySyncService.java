@@ -130,6 +130,20 @@ public class BusinessWeeklySyncService implements SourceSyncService {
                     String externalId = "bw-" + h.path.replaceFirst("^/", "").replace('/', '-');
                     Optional<Paper> existing = papers.findBySourceIdAndExternalId(src.getId(), externalId);
                     if (existing.isPresent()) {
+                        Paper p = existing.get();
+                        // Heal rows saved by an earlier parser pass that wrote a URL
+                        // string into the title (image-only anchor + missing alt
+                        // text). Overwrite with the freshly parsed title.
+                        boolean badTitle = p.getTitle() == null || looksLikeUrl(p.getTitle());
+                        boolean badAbstract = p.getAbstractText() == null || looksLikeUrl(p.getAbstractText());
+                        if (badTitle && !looksLikeUrl(h.title)) {
+                            p.setTitle(h.title);
+                            if (badAbstract && h.snippet != null && !h.snippet.isBlank()) {
+                                p.setAbstractText(h.snippet);
+                            }
+                            papers.save(p);
+                            log.info("Business Weekly: healed title for {}", externalId);
+                        }
                         skipped++;
                         continue;
                     }
@@ -161,6 +175,12 @@ public class BusinessWeeklySyncService implements SourceSyncService {
         }
     }
 
+    /**
+     * Pulls every unique article hit. Each path can appear under multiple anchors
+     * (thumbnail wrapper, title wrapper, sometimes "read more" link) — we collect
+     * the title-candidate text from all of them and keep the longest non-URL
+     * version per path. This way image-only anchors don't shadow the real title.
+     */
     static Map<String, ArticleHit> parseHits(String html) {
         Map<String, ArticleHit> out = new LinkedHashMap<>();
         if (html == null || html.isBlank()) return out;
@@ -168,7 +188,11 @@ public class BusinessWeeklySyncService implements SourceSyncService {
         while (m.find()) {
             String path = m.group(1);
             String inner = m.group(2);
-            if (out.containsKey(path)) continue;
+
+            // Promote img alt= and a title= attributes to visible text BEFORE
+            // stripping tags so titles that only exist in alt/title attrs survive.
+            inner = ALT_ATTR.matcher(inner).replaceAll(" $1 ");
+            inner = TITLE_ATTR.matcher(inner).replaceAll(" $1 ");
 
             String stripped = WHITESPACE.matcher(STRIP_TAGS.matcher(inner).replaceAll(" ")).replaceAll(" ").trim();
             if (stripped.isEmpty()) continue;
@@ -176,21 +200,45 @@ public class BusinessWeeklySyncService implements SourceSyncService {
             String title = pickTitle(stripped);
             if (title.isEmpty()) continue;
 
+            ArticleHit existing = out.get(path);
+            if (existing != null && existing.title.length() >= title.length()) {
+                continue; // keep the better candidate we already have
+            }
+
             Instant published = pickDate(stripped);
+            if (published == null && existing != null) published = existing.publishedAt;
             String snippet = stripped.length() > 280 ? stripped.substring(0, 280).trim() + "…" : stripped;
             out.put(path, new ArticleHit(path, title, snippet, published));
         }
         return out;
     }
 
+    /** {@code <img alt="X" ...>} → {@code " X "} so alt text survives tag stripping. */
+    private static final Pattern ALT_ATTR = Pattern.compile(
+            "<img\\b[^>]*\\balt\\s*=\\s*[\"']([^\"']+)[\"'][^>]*/?>",
+            Pattern.CASE_INSENSITIVE);
+
+    /** {@code <a title="X" ...>} → {@code " X "} so anchor titles survive. */
+    private static final Pattern TITLE_ATTR = Pattern.compile(
+            "\\btitle\\s*=\\s*[\"']([^\"']+)[\"']",
+            Pattern.CASE_INSENSITIVE);
+
+    /** True for chunks that look like a URL — we don't want those as titles. */
+    private static boolean looksLikeUrl(String s) {
+        String low = s.toLowerCase();
+        return low.startsWith("http") || low.startsWith("www.") || low.contains("businessweekly.com")
+                || low.contains("://") || s.contains("/blog/") || s.contains("/article/");
+    }
+
     private static String pickTitle(String stripped) {
-        String[] chunks = stripped.split("[|｜·\\u2022]|\\s{3,}");
+        String[] chunks = stripped.split("[|｜·\\u2022\\u00b7]|\\s{3,}");
         String best = "";
         for (String c : chunks) {
             String t = c.trim();
             if (t.isEmpty()) continue;
             if (NUMERIC_DATE.matcher(t).matches() || CHINESE_DATE.matcher(t).matches()) continue;
-            if (t.length() < 6) continue;
+            if (looksLikeUrl(t)) continue;
+            if (t.length() < 4) continue; // allow short Chinese titles like "山西汾酒"
             if (t.length() > best.length()) best = t;
         }
         if (best.length() > 200) best = best.substring(0, 200).trim() + "…";
