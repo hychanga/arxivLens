@@ -110,36 +110,39 @@ public class SchemaBootstrap {
      * {@code "bw-"} — the prefix the old auto-scrape used. Manual BW articles
      * added via the Feed page use the {@code "manual-"} prefix and are
      * untouched.
+     *
+     * <p>Uses a SELECT-then-DELETE-by-id-list pattern rather than nested
+     * correlated subqueries because TiDB has historically been picky about
+     * {@code DELETE … WHERE col IN (SELECT …)} forms.
      */
     private void purgeLegacyBusinessWeeklyPapers() {
         try {
-            // Order matters: child tables first, then papers. No FK cascades
-            // are configured in our schema (we cascade in Java code), so each
-            // DELETE has to be explicit.
-            jdbc.update(
-                    "DELETE FROM paper_translations WHERE paper_id IN "
-                            + "(SELECT id FROM papers WHERE external_id LIKE 'bw-%')");
-            jdbc.update(
-                    "DELETE FROM ai_summaries WHERE favorite_id IN "
-                            + "(SELECT id FROM favorites WHERE paper_id IN "
-                            + "(SELECT id FROM papers WHERE external_id LIKE 'bw-%'))");
-            jdbc.update(
-                    "DELETE FROM favorites WHERE paper_id IN "
-                            + "(SELECT id FROM papers WHERE external_id LIKE 'bw-%')");
-            jdbc.update(
-                    "DELETE FROM download_blobs WHERE download_id IN "
-                            + "(SELECT id FROM downloads WHERE paper_id IN "
-                            + "(SELECT id FROM papers WHERE external_id LIKE 'bw-%'))");
-            jdbc.update(
-                    "DELETE FROM downloads WHERE paper_id IN "
-                            + "(SELECT id FROM papers WHERE external_id LIKE 'bw-%')");
-            int papersDeleted = jdbc.update(
-                    "DELETE FROM papers WHERE external_id LIKE 'bw-%'");
-            if (papersDeleted > 0) {
-                log.info("Purged {} legacy Business Weekly auto-synced paper(s)", papersDeleted);
+            java.util.List<Long> ids = jdbc.queryForList(
+                    "SELECT id FROM papers WHERE external_id LIKE 'bw-%'", Long.class);
+            if (ids.isEmpty()) {
+                log.info("Schema bootstrap: no legacy 'bw-*' papers to purge");
+                return;
             }
+            String inList = ids.stream()
+                    .map(String::valueOf)
+                    .collect(java.util.stream.Collectors.joining(","));
+            log.info("Schema bootstrap: purging {} legacy BW paper(s): ids=[{}]",
+                    ids.size(), inList.length() > 200 ? inList.substring(0, 200) + "…" : inList);
+
+            int t = jdbc.update("DELETE FROM paper_translations WHERE paper_id IN (" + inList + ")");
+            int s = jdbc.update(
+                    "DELETE FROM ai_summaries WHERE favorite_id IN "
+                            + "(SELECT id FROM favorites WHERE paper_id IN (" + inList + "))");
+            int f = jdbc.update("DELETE FROM favorites WHERE paper_id IN (" + inList + ")");
+            int b = jdbc.update(
+                    "DELETE FROM download_blobs WHERE download_id IN "
+                            + "(SELECT id FROM downloads WHERE paper_id IN (" + inList + "))");
+            int d = jdbc.update("DELETE FROM downloads WHERE paper_id IN (" + inList + ")");
+            int p = jdbc.update("DELETE FROM papers WHERE id IN (" + inList + ")");
+            log.info("Schema bootstrap: BW purge results — translations={} ai_summaries={} favorites={} blobs={} downloads={} papers={}",
+                    t, s, f, b, d, p);
         } catch (Exception e) {
-            log.warn("Schema bootstrap: BW legacy purge failed — {}", e.getMessage());
+            log.warn("Schema bootstrap: BW legacy purge failed — {}", e.getMessage(), e);
         }
     }
 

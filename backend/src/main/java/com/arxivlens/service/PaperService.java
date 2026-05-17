@@ -76,12 +76,23 @@ public class PaperService {
         this.blobs = blobs;
     }
 
+    /**
+     * Sources whose feed is populated entirely by user-pasted / URL-imported
+     * articles. The publishedAt of those rows is the article's real publish
+     * date (sometimes years ago), so applying the regular "last N days" filter
+     * would hide just-added articles. For these sources we bypass the date
+     * window and show everything.
+     */
+    private static final java.util.Set<String> MANUAL_SOURCES = java.util.Set.of("hbr", "businessweekly");
+
     public Page<Paper> findFeed(String sourceCode, Integer days, String topicCode, int page, int size) {
         long sourceId = sources.findByCode(sourceCode)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Unknown source: " + sourceCode))
                 .getId();
         int safeDays = (days == null) ? 30 : Math.min(365, Math.max(1, days));
-        Instant since = Instant.now().minus(safeDays, ChronoUnit.DAYS);
+        Instant since = MANUAL_SOURCES.contains(sourceCode)
+                ? Instant.EPOCH
+                : Instant.now().minus(safeDays, ChronoUnit.DAYS);
         int safeSize = Math.min(100, Math.max(1, size));
         return papers.findFeed(
                 sourceId,
