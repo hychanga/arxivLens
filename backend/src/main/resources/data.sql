@@ -7,8 +7,9 @@ VALUES (1, 7, 50, 360);
 
 -- ----- data_sources -----
 INSERT IGNORE INTO data_sources (id, code, name, description, is_enabled, display_order) VALUES
-  (1, 'arxiv', 'arXiv',                    'Computer science & physics preprints — synced every 6 hours.', 1, 1),
-  (2, 'hbr',   'Harvard Business Review',  'Management & leadership insights via RSS.',                    1, 2);
+  (1, 'arxiv',          'arXiv',                    'Computer science & physics preprints — synced every 6 hours.', 1, 1),
+  (2, 'hbr',            'Harvard Business Review',  'Management & leadership insights via RSS.',                    1, 2),
+  (3, 'businessweekly', '商業週刊',                  '搜尋商業週刊網站，依關鍵字抓取最新文章列表。',                     1, 3);
 
 -- ----- topics -----
 -- arXiv categories

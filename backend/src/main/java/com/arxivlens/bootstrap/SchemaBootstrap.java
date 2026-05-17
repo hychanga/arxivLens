@@ -95,6 +95,22 @@ public class SchemaBootstrap {
         // flaky about ALTERing existing tables — same reason the per-table
         // CREATE IF NOT EXISTS calls exist above.
         addColumnIfMissing("paper_translations", "introduction", "TEXT NULL");
+        // Add the businessweekly source row in prod (data.sql only runs locally).
+        ensureSource("businessweekly", "商業週刊",
+                "搜尋商業週刊網站，依關鍵字抓取最新文章列表。", 3);
+    }
+
+    /** Idempotent INSERT IGNORE for a row in {@code data_sources}. */
+    private void ensureSource(String code, String name, String description, int displayOrder) {
+        try {
+            jdbc.update(
+                    "INSERT IGNORE INTO data_sources (code, name, description, is_enabled, display_order) "
+                            + "VALUES (?, ?, ?, 1, ?)",
+                    code, name, description, displayOrder);
+            log.info("Schema bootstrap: data_sources row '{}' is present", code);
+        } catch (Exception e) {
+            log.warn("Schema bootstrap: could not seed data_sources row {} — {}", code, e.getMessage());
+        }
     }
 
     /**

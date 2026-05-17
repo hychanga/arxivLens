@@ -13,8 +13,17 @@ public record AppProperties(
         Mail mail,
         Frontend frontend,
         PasswordReset passwordReset,
-        Oauth oauth
+        Oauth oauth,
+        BusinessWeekly businessWeekly
 ) {
+
+    /**
+     * Business Weekly is a "search-results" source: the Latest feed is built by
+     * scraping the public search-results page for {@code searchKeyword}. Default
+     * keyword is the Taiwanese wine writer 林裕森; override via the
+     * {@code BUSINESS_WEEKLY_SEARCH_KEYWORD} env var when needed.
+     */
+    public record BusinessWeekly(String searchKeyword) {}
     public record Jwt(String secret, long expirationMs, String issuer) {}
     public record Cors(List<String> allowedOrigins) {}
     public record Ai(String provider, Gemini gemini) {

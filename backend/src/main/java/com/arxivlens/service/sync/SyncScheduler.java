@@ -42,6 +42,16 @@ public class SyncScheduler {
                 r.fetched(), r.inserted(), r.skipped(), r.error());
     }
 
+    /** Business Weekly: scrape the public search-results page for the configured keyword. */
+    @Scheduled(cron = "${app.scheduler.business-weekly-cron:0 15 */6 * * *}")
+    public void businessWeekly() {
+        if (!enabled) return;
+        log.info("Scheduled Business Weekly sync starting");
+        SyncResult r = dispatcher.syncByCode("businessweekly");
+        log.info("Business Weekly sync done: fetched={} inserted={} skipped={} error={}",
+                r.fetched(), r.inserted(), r.skipped(), r.error());
+    }
+
     @SuppressWarnings("unused")
     private AppProperties unusedRef() { return props; }
 }
