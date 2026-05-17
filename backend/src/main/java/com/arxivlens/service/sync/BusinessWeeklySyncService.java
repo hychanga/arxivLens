@@ -6,6 +6,7 @@ import com.arxivlens.entity.Paper;
 import com.arxivlens.entity.Source;
 import com.arxivlens.repository.PaperRepository;
 import com.arxivlens.repository.SourceRepository;
+import com.arxivlens.service.HtmlExtractor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -19,27 +20,33 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneOffset;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.LinkedHashSet;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Scrapes the public search-results page on businessweekly.com.tw for a fixed
- * keyword (default: {@code 林裕森}) and upserts each hit as a {@link Paper}.
+ * Pulls every article surfaced by businessweekly.com.tw's public search-results
+ * page for a fixed keyword (default {@code 林裕森}).
  *
- * <p>This is a "search feed" source — there is no per-topic taxonomy and no
- * RSS, so we rely on the search page's HTML cards. The parser is deliberately
- * permissive: it captures every internal article link, then per-link extracts
- * the title (anchor text minus tags) and any nearby publish date.
+ * <p>Two-phase scrape:
+ * <ol>
+ *   <li><b>Search page</b> — paginate up to {@link #MAX_PAGES} pages and collect
+ *       every internal article path (e.g. {@code /style/blog/3021396}). Only
+ *       the href is read here; titles are unreliable on the card markup
+ *       (image-only anchors, JS-rendered headings, etc.).</li>
+ *   <li><b>Article page</b> — for each new path, GET the article URL and run
+ *       it through {@link HtmlExtractor}, which already handles og:title,
+ *       JSON-LD {@code datePublished}, {@code <time datetime>}, and Chinese
+ *       date formats. Titles come from {@code og:title}, dates from any of
+ *       the supported meta tags, and content from the article body.</li>
+ * </ol>
  *
- * <p>Pagination: the search page supports {@code &page=N}. We iterate until
- * either we hit {@link #MAX_PAGES} or a page yields no new articles.
+ * <p>Re-syncs are cheap because we skip article-page fetches for paths whose
+ * external id already exists in the DB. Rows previously saved with a URL-like
+ * title (legacy of the earlier card-only parser) are self-healed by re-fetching
+ * the article page.
  */
 @Service
 public class BusinessWeeklySyncService implements SourceSyncService {
@@ -47,28 +54,20 @@ public class BusinessWeeklySyncService implements SourceSyncService {
     private static final Logger log = LoggerFactory.getLogger(BusinessWeeklySyncService.class);
     private static final String SOURCE_CODE = "businessweekly";
     private static final String BASE = "https://www.businessweekly.com.tw";
-    private static final int MAX_PAGES = 10;
+    private static final int MAX_PAGES = 20;
 
     /**
      * Fallback search keyword when {@code app.business-weekly.search-keyword} is
-     * unset or empty. Hardcoded in source (which javac reads as UTF-8) rather
-     * than as a properties default because some Spring Boot setups still load
-     * {@code .properties} files as Latin-1, mojibaking raw CJK defaults.
+     * unset or empty. Hardcoded here (javac reads source as UTF-8) rather than
+     * in {@code application.properties}, where some Spring Boot setups still
+     * decode .properties files as Latin-1 and mojibake raw CJK defaults.
      */
     private static final String DEFAULT_KEYWORD = "林裕森";
 
-    private static final Pattern ARTICLE_ANCHOR = Pattern.compile(
-            "<a\\b[^>]*href=[\"'](/[a-z\\-]+/(?:blog|article)/\\d+)[\"'][^>]*>([\\s\\S]{1,4000}?)</a>",
+    /** Matches every internal article path (e.g. /style/blog/3021396). */
+    private static final Pattern ARTICLE_HREF = Pattern.compile(
+            "href=[\"'](/[a-z\\-]+/(?:blog|article)/\\d+)[\"']",
             Pattern.CASE_INSENSITIVE);
-
-    private static final Pattern NUMERIC_DATE = Pattern.compile(
-            "(\\d{4})[/.\\-](\\d{1,2})[/.\\-](\\d{1,2})");
-
-    private static final Pattern CHINESE_DATE = Pattern.compile(
-            "(\\d{4})\\s*年\\s*(\\d{1,2})\\s*月\\s*(\\d{1,2})\\s*日");
-
-    private static final Pattern STRIP_TAGS = Pattern.compile("<[^>]+>");
-    private static final Pattern WHITESPACE = Pattern.compile("[\\s\\u00a0]+");
 
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -97,7 +96,7 @@ public class BusinessWeeklySyncService implements SourceSyncService {
     public SyncResult sync() {
         Optional<Source> srcOpt = sources.findByCode(SOURCE_CODE);
         if (srcOpt.isEmpty()) {
-            return new SyncResult(SOURCE_CODE, 0, 0, 0, "Source row missing — restart so data.sql / SchemaBootstrap can seed it.");
+            return new SyncResult(SOURCE_CODE, 0, 0, 0, "Source row missing — restart so SchemaBootstrap can seed it.");
         }
         Source src = srcOpt.get();
         if (!Boolean.TRUE.equals(src.getEnabled())) {
@@ -109,157 +108,148 @@ public class BusinessWeeklySyncService implements SourceSyncService {
         log.info("Business Weekly sync using keyword='{}' (env override={})",
                 keyword, configured != null && !configured.isBlank());
 
-        int fetched = 0, inserted = 0, skipped = 0;
-        int emptyPages = 0;
-        try {
-            for (int page = 1; page <= MAX_PAGES; page++) {
-                String url = BASE + "/Search?keyword="
-                        + URLEncoder.encode(keyword, StandardCharsets.UTF_8)
-                        + (page == 1 ? "" : "&page=" + page);
-                String html = fetchHtml(url);
-                Map<String, ArticleHit> hits = parseHits(html);
-                if (hits.isEmpty()) {
-                    if (++emptyPages >= 2) break;
+        // Phase 1: collect every article path the search returns.
+        Set<String> paths = collectPaths(keyword);
+        log.info("Business Weekly: search yielded {} unique article path(s)", paths.size());
+        if (paths.isEmpty()) {
+            return new SyncResult(SOURCE_CODE, 0, 0, 0, "Search returned no article links — markup may have changed.");
+        }
+
+        // Phase 2: fetch each article page, extract via HtmlExtractor, upsert.
+        int fetched = 0, inserted = 0, skipped = 0, errored = 0;
+        for (String path : paths) {
+            fetched++;
+            String externalId = "bw-" + path.replaceFirst("^/", "").replace('/', '-');
+            Optional<Paper> existing = papers.findBySourceIdAndExternalId(src.getId(), externalId);
+            if (existing.isPresent()) {
+                Paper p = existing.get();
+                if (looksLikeUrl(p.getTitle())) {
+                    if (healFromArticlePage(p, path)) inserted++;
+                    else errored++;
+                } else {
+                    skipped++;
+                }
+                continue;
+            }
+            try {
+                Paper p = buildFromArticlePage(src, externalId, path);
+                if (p == null) {
+                    errored++;
                     continue;
                 }
-                emptyPages = 0;
-
-                int pageNew = 0;
-                for (ArticleHit h : hits.values()) {
-                    fetched++;
-                    String externalId = "bw-" + h.path.replaceFirst("^/", "").replace('/', '-');
-                    Optional<Paper> existing = papers.findBySourceIdAndExternalId(src.getId(), externalId);
-                    if (existing.isPresent()) {
-                        Paper p = existing.get();
-                        // Heal rows saved by an earlier parser pass that wrote a URL
-                        // string into the title (image-only anchor + missing alt
-                        // text). Overwrite with the freshly parsed title.
-                        boolean badTitle = p.getTitle() == null || looksLikeUrl(p.getTitle());
-                        boolean badAbstract = p.getAbstractText() == null || looksLikeUrl(p.getAbstractText());
-                        if (badTitle && !looksLikeUrl(h.title)) {
-                            p.setTitle(h.title);
-                            if (badAbstract && h.snippet != null && !h.snippet.isBlank()) {
-                                p.setAbstractText(h.snippet);
-                            }
-                            papers.save(p);
-                            log.info("Business Weekly: healed title for {}", externalId);
-                        }
-                        skipped++;
-                        continue;
-                    }
-                    Paper p = new Paper();
-                    p.setSource(src);
-                    p.setSourceId(src.getId());
-                    p.setExternalId(externalId);
-                    p.setTitle(h.title);
-                    p.setAuthorsJson("[]");
-                    p.setAbstractText(h.snippet == null || h.snippet.isBlank() ? h.title : h.snippet);
-                    p.setIntroduction(null);
-                    p.setUrl(BASE + h.path);
-                    p.setPdfUrl(null);
-                    p.setTopicCode(null);
-                    p.setPublishedAt(h.publishedAt != null ? h.publishedAt : Instant.now());
-                    papers.save(p);
-                    inserted++;
-                    pageNew++;
-                }
-                log.info("Business Weekly page {}: {} hits, {} new, {} duplicates",
-                        page, hits.size(), pageNew, hits.size() - pageNew);
-                if (pageNew == 0) break;
+                papers.save(p);
+                inserted++;
+            } catch (Exception e) {
+                log.warn("BW: failed to ingest {} — {}", path, e.getMessage());
+                errored++;
             }
-            return new SyncResult(SOURCE_CODE, fetched, inserted, skipped, null);
-        } catch (Exception e) {
-            log.warn("Business Weekly sync failed", e);
-            return new SyncResult(SOURCE_CODE, fetched, inserted, skipped,
-                    "Business Weekly fetch failed: " + e.getMessage());
         }
+
+        log.info("Business Weekly sync: fetched={} inserted={} skipped={} errored={}",
+                fetched, inserted, skipped, errored);
+        return new SyncResult(SOURCE_CODE, fetched, inserted, skipped,
+                errored > 0 ? errored + " article(s) errored — see warn logs" : null);
     }
 
-    /**
-     * Pulls every unique article hit. Each path can appear under multiple anchors
-     * (thumbnail wrapper, title wrapper, sometimes "read more" link) — we collect
-     * the title-candidate text from all of them and keep the longest non-URL
-     * version per path. This way image-only anchors don't shadow the real title.
-     */
-    static Map<String, ArticleHit> parseHits(String html) {
-        Map<String, ArticleHit> out = new LinkedHashMap<>();
-        if (html == null || html.isBlank()) return out;
-        Matcher m = ARTICLE_ANCHOR.matcher(html);
-        while (m.find()) {
-            String path = m.group(1);
-            String inner = m.group(2);
-
-            // Promote img alt= and a title= attributes to visible text BEFORE
-            // stripping tags so titles that only exist in alt/title attrs survive.
-            inner = ALT_ATTR.matcher(inner).replaceAll(" $1 ");
-            inner = TITLE_ATTR.matcher(inner).replaceAll(" $1 ");
-
-            String stripped = WHITESPACE.matcher(STRIP_TAGS.matcher(inner).replaceAll(" ")).replaceAll(" ").trim();
-            if (stripped.isEmpty()) continue;
-
-            String title = pickTitle(stripped);
-            if (title.isEmpty()) continue;
-
-            ArticleHit existing = out.get(path);
-            if (existing != null && existing.title.length() >= title.length()) {
-                continue; // keep the better candidate we already have
+    /** Walks search-results pages until we run out of new paths or hit MAX_PAGES. */
+    private Set<String> collectPaths(String keyword) {
+        Set<String> out = new LinkedHashSet<>();
+        for (int page = 1; page <= MAX_PAGES; page++) {
+            String url;
+            try {
+                url = BASE + "/Search?keyword="
+                        + URLEncoder.encode(keyword, StandardCharsets.UTF_8)
+                        + (page == 1 ? "" : "&page=" + page);
+            } catch (Exception e) {
+                break;
             }
-
-            Instant published = pickDate(stripped);
-            if (published == null && existing != null) published = existing.publishedAt;
-            String snippet = stripped.length() > 280 ? stripped.substring(0, 280).trim() + "…" : stripped;
-            out.put(path, new ArticleHit(path, title, snippet, published));
+            String html;
+            try {
+                html = fetchHtml(url);
+            } catch (Exception e) {
+                log.warn("BW: page {} fetch failed — {}", page, e.getMessage());
+                break;
+            }
+            int before = out.size();
+            Matcher m = ARTICLE_HREF.matcher(html);
+            while (m.find()) out.add(m.group(1));
+            int found = out.size() - before;
+            log.info("BW: page {} contributed {} new path(s) (total {})", page, found, out.size());
+            // Stop when a page yields no new paths — businessweekly's search just
+            // re-renders the last real page once you walk past the end.
+            if (found == 0) break;
         }
         return out;
     }
 
-    /** {@code <img alt="X" ...>} → {@code " X "} so alt text survives tag stripping. */
-    private static final Pattern ALT_ATTR = Pattern.compile(
-            "<img\\b[^>]*\\balt\\s*=\\s*[\"']([^\"']+)[\"'][^>]*/?>",
-            Pattern.CASE_INSENSITIVE);
+    /** Fetches the article page and builds a fully-populated Paper from it. */
+    private Paper buildFromArticlePage(Source src, String externalId, String path) {
+        String articleUrl = BASE + path;
+        String html;
+        try {
+            html = fetchHtml(articleUrl);
+        } catch (Exception e) {
+            log.warn("BW: cannot fetch article page {} — {}", articleUrl, e.getMessage());
+            return null;
+        }
+        HtmlExtractor.ExtractedArticle ex = HtmlExtractor.extract(html);
+        String title = ex.title() == null ? "" : ex.title().trim();
+        if (title.isEmpty() || looksLikeUrl(title)) {
+            log.warn("BW: could not extract a usable title for {}", articleUrl);
+            return null;
+        }
+        String content = ex.content() == null ? "" : ex.content().trim();
 
-    /** {@code <a title="X" ...>} → {@code " X "} so anchor titles survive. */
-    private static final Pattern TITLE_ATTR = Pattern.compile(
-            "\\btitle\\s*=\\s*[\"']([^\"']+)[\"']",
-            Pattern.CASE_INSENSITIVE);
+        Paper p = new Paper();
+        p.setSource(src);
+        p.setSourceId(src.getId());
+        p.setExternalId(externalId);
+        p.setTitle(title);
+        p.setAuthorsJson("[]");
+        p.setAbstractText(snippet(content, title));
+        p.setIntroduction(content.isBlank() ? null : content);
+        p.setUrl(articleUrl);
+        p.setPdfUrl(null);
+        p.setTopicCode(null);
+        p.setPublishedAt(ex.publishedAt() != null ? ex.publishedAt() : Instant.now());
+        return p;
+    }
 
-    /** True for chunks that look like a URL — we don't want those as titles. */
+    /** Refreshes an existing row whose title got stored as a URL in an earlier run. */
+    private boolean healFromArticlePage(Paper p, String path) {
+        try {
+            String html = fetchHtml(BASE + path);
+            HtmlExtractor.ExtractedArticle ex = HtmlExtractor.extract(html);
+            String title = ex.title() == null ? "" : ex.title().trim();
+            if (title.isEmpty() || looksLikeUrl(title)) return false;
+            String content = ex.content() == null ? "" : ex.content().trim();
+            p.setTitle(title);
+            p.setAbstractText(snippet(content, title));
+            if (!content.isBlank() && (p.getIntroduction() == null || p.getIntroduction().isBlank())) {
+                p.setIntroduction(content);
+            }
+            if (ex.publishedAt() != null) p.setPublishedAt(ex.publishedAt());
+            papers.save(p);
+            log.info("BW: healed title for {}", p.getExternalId());
+            return true;
+        } catch (Exception e) {
+            log.warn("BW: heal failed for {} — {}", p.getExternalId(), e.getMessage());
+            return false;
+        }
+    }
+
+    private static String snippet(String content, String fallback) {
+        if (content == null || content.isBlank()) return fallback;
+        String trimmed = content.trim();
+        return trimmed.length() > 500 ? trimmed.substring(0, 500).trim() + "…" : trimmed;
+    }
+
+    /** True for strings that look like URLs — we never want those as titles. */
     private static boolean looksLikeUrl(String s) {
+        if (s == null) return true;
         String low = s.toLowerCase();
         return low.startsWith("http") || low.startsWith("www.") || low.contains("businessweekly.com")
                 || low.contains("://") || s.contains("/blog/") || s.contains("/article/");
-    }
-
-    private static String pickTitle(String stripped) {
-        String[] chunks = stripped.split("[|｜·\\u2022\\u00b7]|\\s{3,}");
-        String best = "";
-        for (String c : chunks) {
-            String t = c.trim();
-            if (t.isEmpty()) continue;
-            if (NUMERIC_DATE.matcher(t).matches() || CHINESE_DATE.matcher(t).matches()) continue;
-            if (looksLikeUrl(t)) continue;
-            if (t.length() < 4) continue; // allow short Chinese titles like "山西汾酒"
-            if (t.length() > best.length()) best = t;
-        }
-        if (best.length() > 200) best = best.substring(0, 200).trim() + "…";
-        return best;
-    }
-
-    private static Instant pickDate(String text) {
-        Matcher m = NUMERIC_DATE.matcher(text);
-        if (m.find()) return toInstant(m.group(1), m.group(2), m.group(3));
-        Matcher c = CHINESE_DATE.matcher(text);
-        if (c.find()) return toInstant(c.group(1), c.group(2), c.group(3));
-        return null;
-    }
-
-    private static Instant toInstant(String y, String mo, String d) {
-        try {
-            return LocalDate.of(Integer.parseInt(y), Integer.parseInt(mo), Integer.parseInt(d))
-                    .atStartOfDay(ZoneOffset.UTC).toInstant();
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     private String fetchHtml(String url) throws Exception {
@@ -279,9 +269,4 @@ public class BusinessWeeklySyncService implements SourceSyncService {
         }
         return new String(res.body(), StandardCharsets.UTF_8);
     }
-
-    record ArticleHit(String path, String title, String snippet, Instant publishedAt) {}
-
-    @SuppressWarnings("unused")
-    private static List<String> unusedRef() { return new ArrayList<>(); }
 }
