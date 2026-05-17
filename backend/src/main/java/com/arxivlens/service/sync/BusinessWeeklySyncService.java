@@ -49,6 +49,14 @@ public class BusinessWeeklySyncService implements SourceSyncService {
     private static final String BASE = "https://www.businessweekly.com.tw";
     private static final int MAX_PAGES = 10;
 
+    /**
+     * Fallback search keyword when {@code app.business-weekly.search-keyword} is
+     * unset or empty. Hardcoded in source (which javac reads as UTF-8) rather
+     * than as a properties default because some Spring Boot setups still load
+     * {@code .properties} files as Latin-1, mojibaking raw CJK defaults.
+     */
+    private static final String DEFAULT_KEYWORD = "林裕森";
+
     private static final Pattern ARTICLE_ANCHOR = Pattern.compile(
             "<a\\b[^>]*href=[\"'](/[a-z\\-]+/(?:blog|article)/\\d+)[\"'][^>]*>([\\s\\S]{1,4000}?)</a>",
             Pattern.CASE_INSENSITIVE);
@@ -96,10 +104,10 @@ public class BusinessWeeklySyncService implements SourceSyncService {
             return new SyncResult(SOURCE_CODE, 0, 0, 0, "Source disabled.");
         }
 
-        String keyword = props.businessWeekly() == null ? null : props.businessWeekly().searchKeyword();
-        if (keyword == null || keyword.isBlank()) {
-            return new SyncResult(SOURCE_CODE, 0, 0, 0, "No search keyword configured (app.business-weekly.search-keyword).");
-        }
+        String configured = props.businessWeekly() == null ? null : props.businessWeekly().searchKeyword();
+        String keyword = (configured == null || configured.isBlank()) ? DEFAULT_KEYWORD : configured;
+        log.info("Business Weekly sync using keyword='{}' (env override={})",
+                keyword, configured != null && !configured.isBlank());
 
         int fetched = 0, inserted = 0, skipped = 0;
         int emptyPages = 0;
