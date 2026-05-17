@@ -43,6 +43,7 @@ const dict: Record<Locale, Record<string, string>> = {
     "nav.label_main": "Main",
 
     "sidebar.days": "Days",
+    "sidebar.days_all": "All",
     "sidebar.apply": "Apply",
     "sidebar.keywords": "Keywords",
     "sidebar.keywords_for": "for {source}",
@@ -248,6 +249,7 @@ const dict: Record<Locale, Record<string, string>> = {
     "nav.label_main": "主要",
 
     "sidebar.days": "天數",
+    "sidebar.days_all": "全部",
     "sidebar.apply": "套用",
     "sidebar.keywords": "關鍵字",
     "sidebar.keywords_for": "（{source}）",
@@ -449,6 +451,7 @@ const dict: Record<Locale, Record<string, string>> = {
     "nav.label_main": "主菜单",
 
     "sidebar.days": "天数",
+    "sidebar.days_all": "全部",
     "sidebar.apply": "应用",
     "sidebar.keywords": "关键词",
     "sidebar.keywords_for": "（{source}）",
@@ -650,6 +653,7 @@ const dict: Record<Locale, Record<string, string>> = {
     "nav.label_main": "メイン",
 
     "sidebar.days": "日数",
+    "sidebar.days_all": "すべて",
     "sidebar.apply": "適用",
     "sidebar.keywords": "キーワード",
     "sidebar.keywords_for": "（{source}）",
@@ -852,6 +856,7 @@ const dict: Record<Locale, Record<string, string>> = {
     "nav.label_main": "Hauptmenü",
 
     "sidebar.days": "Tage",
+    "sidebar.days_all": "Alle",
     "sidebar.apply": "Übernehmen",
     "sidebar.keywords": "Schlüsselwörter",
     "sidebar.keywords_for": "für {source}",

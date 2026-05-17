@@ -9,12 +9,17 @@ interface Props {
   onApply: (next: number) => void;
 }
 
+/** Upper bound of the date filter. 3650 days = ten years, effectively "all time". */
+const MAX_DAYS = 3650;
+
 const QUICK = [
-  { d: 7,   label: "7d"  },
-  { d: 30,  label: "30d" },
-  { d: 90,  label: "90d" },
-  { d: 180, label: "6mo" },
-  { d: 365, label: "1yr" },
+  { d: 7,    label: "7d"  },
+  { d: 30,   label: "30d" },
+  { d: 90,   label: "90d" },
+  { d: 180,  label: "6mo" },
+  { d: 365,  label: "1yr" },
+  { d: 730,  label: "2yr" },
+  { d: MAX_DAYS, label: "All" },
 ];
 
 export default function DaysControl({ days, onApply }: Props) {
@@ -30,26 +35,27 @@ export default function DaysControl({ days, onApply }: Props) {
   }, [appliedFlash]);
 
   function apply(next: number) {
-    const v = clamp(Math.round(next), 1, 365);
+    const v = clamp(Math.round(next), 1, MAX_DAYS);
     onApply(v);
     setPending(v);
     setAppliedFlash(true);
   }
 
   const dirty = pending !== days;
+  const displayValue = pending >= MAX_DAYS ? t("sidebar.days_all") : pending;
 
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 text-xs">
         <span className="uppercase tracking-wide text-zinc-500">{t("sidebar.days")}</span>
-        <span className="text-zinc-700 dark:text-zinc-200 font-medium">{pending}</span>
+        <span className="text-zinc-700 dark:text-zinc-200 font-medium">{displayValue}</span>
         {appliedFlash && <span className="text-emerald-600 dark:text-emerald-300">{t("common.applied")}</span>}
       </div>
 
       <input
         type="range"
         min={1}
-        max={365}
+        max={MAX_DAYS}
         value={pending}
         onChange={(e) => setPending(Number(e.target.value))}
         className="w-full"

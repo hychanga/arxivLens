@@ -6,9 +6,13 @@ import { parseAuthors, fmtDate, shortenUrl } from "@/lib/format";
 import { scoreBadgeClass } from "@/lib/relevance";
 import { useT } from "@/lib/i18n";
 import { detectLanguage, sameLanguageFamily } from "@/lib/lang";
+import { apiFetch } from "@/lib/api";
 import { useLocaleStore } from "@/store/locale";
 import { useTranslationsStore } from "@/store/translations";
 import { useUiStore } from "@/store/ui";
+import { usePapersStore } from "@/store/papers";
+import { useFavoritesStore } from "@/store/favorites";
+import { useDownloadsStore } from "@/store/downloads";
 
 interface Props {
   paper: Paper;
@@ -32,6 +36,7 @@ export default function PaperCard({
   showScore = false,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const t = useT();
   const locale = useLocaleStore((s) => s.locale);
   const translation = useTranslationsStore((s) => s.byKey[`${paper.id}:${locale}`]);
@@ -40,6 +45,36 @@ export default function PaperCard({
   const clearLocal = useTranslationsStore((s) => s.clearLocal);
   const isLoading = useTranslationsStore((s) => s.loading.has(`${paper.id}:${locale}`));
   const flash = useUiStore((s) => s.flash);
+  const ask = useUiStore((s) => s.ask);
+  const refetchPapers = usePapersStore((s) => s.fetch);
+  const refetchFavorites = useFavoritesStore((s) => s.load);
+  const refetchDownloads = useDownloadsStore((s) => s.load);
+
+  // Only manually-added articles (paste / URL import) can be removed here —
+  // arxiv papers come back on the next sync, so the delete would be a no-op
+  // from the user's POV. Backend enforces the same rule via externalId prefix.
+  const isManual = paper.externalId?.startsWith("manual-") ?? false;
+
+  function onDelete() {
+    ask({
+      title: t("modal.delete_confirm_title"),
+      message: t("modal.delete_confirm_message"),
+      confirmLabel: t("modal.delete"),
+      danger: true,
+      onConfirm: async () => {
+        setDeleting(true);
+        try {
+          await apiFetch<void>(`/papers/${paper.id}`, { method: "DELETE" });
+          await Promise.all([refetchPapers(), refetchFavorites(), refetchDownloads()]);
+          flash(t("modal.delete_done"), "success");
+        } catch (e) {
+          flash(e instanceof Error ? e.message : "Delete failed", "error");
+        } finally {
+          setDeleting(false);
+        }
+      },
+    });
+  }
 
   // Whether the article's actual language differs from the user's UI locale —
   // sample the body first because chrome leftovers in title/abstract can
@@ -163,16 +198,28 @@ export default function PaperCard({
                 </div>
               )}
 
-              {paper.url && (
-                <a
-                  href={paper.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block text-xs text-blue-600 dark:text-blue-400"
-                >
-                  {t("modal.open_on_source")}
-                </a>
-              )}
+              <div className="flex items-center gap-3 text-xs">
+                {paper.url && (
+                  <a
+                    href={paper.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 dark:text-blue-400"
+                  >
+                    {t("modal.open_on_source")}
+                  </a>
+                )}
+                {isManual && (
+                  <button
+                    type="button"
+                    onClick={onDelete}
+                    disabled={deleting}
+                    className="ml-auto rounded text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 px-2 py-1 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                  >
+                    {deleting ? t("modal.deleting") : t("modal.delete")}
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>

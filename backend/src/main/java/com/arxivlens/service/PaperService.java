@@ -77,19 +77,28 @@ public class PaperService {
     }
 
     /**
-     * Sources whose feed is populated entirely by user-pasted / URL-imported
-     * articles. The publishedAt of those rows is the article's real publish
-     * date (sometimes years ago), so applying the regular "last N days" filter
-     * would hide just-added articles. For these sources we bypass the date
-     * window and show everything.
+     * Sources whose feed bypasses the {@code publishedAt >= since} filter. HBR
+     * articles are added by hand (paste / URL import) and we don't want
+     * historical articles to silently disappear just because the user's days
+     * filter is set short. Business Weekly used to be in this set, but the new
+     * {@link com.arxivlens.frontend} 2-year / 10-year quick filters give users a
+     * way to expand the window themselves, so BW now goes through the regular
+     * date filter like arXiv.
      */
-    private static final java.util.Set<String> MANUAL_SOURCES = java.util.Set.of("hbr", "businessweekly");
+    private static final java.util.Set<String> MANUAL_SOURCES = java.util.Set.of("hbr");
+
+    /**
+     * Hard ceiling on the user-supplied "days" param. 3650 = ten years, large
+     * enough to act as "all time" in practice while still bounded so a typo
+     * doesn't pull every row.
+     */
+    private static final int MAX_FEED_DAYS = 3650;
 
     public Page<Paper> findFeed(String sourceCode, Integer days, String topicCode, int page, int size) {
         long sourceId = sources.findByCode(sourceCode)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Unknown source: " + sourceCode))
                 .getId();
-        int safeDays = (days == null) ? 30 : Math.min(365, Math.max(1, days));
+        int safeDays = (days == null) ? 30 : Math.min(MAX_FEED_DAYS, Math.max(1, days));
         Instant since = MANUAL_SOURCES.contains(sourceCode)
                 ? Instant.EPOCH
                 : Instant.now().minus(safeDays, ChronoUnit.DAYS);
