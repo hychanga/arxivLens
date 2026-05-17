@@ -25,7 +25,12 @@ public final class PreferenceDtos {
     ) {}
 
     public record PreferenceUpdateRequest(
-            @Min(1) @Max(365) Integer queryDays,
+            // Upper bound mirrors PaperService.MAX_FEED_DAYS — keep them aligned
+            // so the "2yr" / "All" quick filters in the sidebar can actually be
+            // saved (the lower 365 cap silently 400'd the PATCH and left the DB
+            // at the old value, which then snapped the slider back to 30 on the
+            // next preferences refresh).
+            @Min(1) @Max(3650) Integer queryDays,
             @Size(max = 32) String sortMode,
             Map<String, List<@Size(max = 64) String>> keywords,
             Long currentSourceId,
