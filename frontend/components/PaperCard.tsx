@@ -13,6 +13,7 @@ import { useUiStore } from "@/store/ui";
 import { usePapersStore } from "@/store/papers";
 import { useFavoritesStore } from "@/store/favorites";
 import { useDownloadsStore } from "@/store/downloads";
+import BodyContent from "@/components/BodyContent";
 
 interface Props {
   paper: Paper;
@@ -173,7 +174,7 @@ export default function PaperCard({
           )}
           {expanded && (
             <div className="mt-3 space-y-2 text-sm">
-              <p className="leading-relaxed whitespace-pre-line">{displayAbstract}</p>
+              <BodyContent body={displayAbstract} />
 
               {needsTranslation && (
                 <div className="flex items-center gap-2 flex-wrap">

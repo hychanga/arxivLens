@@ -274,6 +274,11 @@ public final class HtmlExtractor {
         if (src.startsWith("data:") || src.startsWith("about:") || src.startsWith("#")) {
             return null;
         }
+        // Some publishers (BW's CDN: ibw.bwnet.com.tw/AC_Gallery\2024\10\...)
+        // ship Windows-style backslashes in <img src>. They're never legal in a
+        // URL path; normalise to forward slashes uniformly so the cached URL
+        // (and the URI parser below) work.
+        src = src.replace('\\', '/');
         if (src.startsWith("//")) return "https:" + src;
         if (src.startsWith("http://") || src.startsWith("https://")) return src;
         if (baseUrl == null || baseUrl.isBlank()) {

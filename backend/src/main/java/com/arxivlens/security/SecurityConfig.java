@@ -86,6 +86,11 @@ public class SecurityConfig {
                                 "/actuator/health",
                                 "/actuator/info"
                         ).permitAll()
+                        // <img src> tags can't send an Authorization header, so
+                        // the proxy must be reachable anonymously. The service
+                        // restricts upstreams to a publisher allow-list so this
+                        // doesn't enable arbitrary SSRF.
+                        .requestMatchers(HttpMethod.GET, "/api/images/proxy").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/papers/sync/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST,   "/api/sources/**").hasRole("ADMIN")

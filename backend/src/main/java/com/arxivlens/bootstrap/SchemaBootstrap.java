@@ -64,6 +64,19 @@ public class SchemaBootstrap {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """;
 
+    private static final String CREATE_CACHED_IMAGES = """
+            CREATE TABLE IF NOT EXISTS cached_images (
+                id           BIGINT       NOT NULL AUTO_INCREMENT,
+                url_hash     VARCHAR(64)  NOT NULL,
+                source_url   VARCHAR(2048) NOT NULL,
+                content_type VARCHAR(64),
+                data         LONGBLOB     NOT NULL,
+                created_at   DATETIME(6)  NOT NULL,
+                PRIMARY KEY (id),
+                UNIQUE KEY ix_cached_images_url_hash (url_hash)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """;
+
     /**
      * Legacy column names that previous schemas used (and that
      * {@code ddl-auto=update} never drops, by design). When a fresh
@@ -90,6 +103,7 @@ public class SchemaBootstrap {
         }
         createTable("password_reset_tokens", CREATE_PASSWORD_RESET_TOKENS);
         createTable("download_blobs", CREATE_DOWNLOAD_BLOBS);
+        createTable("cached_images", CREATE_CACHED_IMAGES);
         // Belt-and-braces for the new translation.introduction column. Hibernate's
         // ddl-auto=update should add it, but in practice managed TiDB has been
         // flaky about ALTERing existing tables — same reason the per-table
