@@ -18,11 +18,14 @@ interface Props {
 const SLIDER_MAX = 730;
 
 /**
- * Sentinel value persisted in {@code queryDays} to mean "no upper bound".
- * Backend treats it the same as any large value (it clamps to 3650 = ten
- * years, which exceeds anything in our data set).
+ * Sentinel persisted in {@code queryDays} for "no upper bound". 0 is the
+ * canonical value the backend understands as "skip the publishedAt filter
+ * entirely" (the {@code Math.min(3650, …)} clamp would still hide rows older
+ * than ten years — we have content going back to 2009). We also treat any
+ * value past the slider top as legacy "all" so prefs saved before the cut-over
+ * (e.g. 3650) still display as All instead of snapping back to 730.
  */
-const ALL_DAYS = 3650;
+const ALL_DAYS = 0;
 
 const QUICK = [
   { d: 7,    label: "7d"  },
@@ -48,17 +51,22 @@ export default function DaysControl({ days, onApply }: Props) {
 
   function apply(next: number) {
     const rounded = Math.round(next);
-    // Anything past the slider top jumps to the All sentinel; otherwise
-    // clamp to the slider range so e.g. accidental negative values from
-    // older persisted prefs don't poison the UI.
-    const v = rounded > SLIDER_MAX ? ALL_DAYS : clamp(rounded, 1, SLIDER_MAX);
+    // ≤0 or anything past the slider top is the "All" sentinel; otherwise
+    // clamp to the slider range. The legacy >SLIDER_MAX branch coerces any
+    // 3650-style value from earlier deploys into the new 0 canonical form
+    // the next time the user touches the control.
+    const v = rounded <= 0 || rounded > SLIDER_MAX
+        ? ALL_DAYS
+        : clamp(rounded, 1, SLIDER_MAX);
     onApply(v);
     setPending(v);
     setAppliedFlash(true);
   }
 
   const dirty = pending !== days;
-  const isAll = pending >= ALL_DAYS;
+  // 0 is the canonical "All"; >SLIDER_MAX catches prefs persisted by the
+  // older 3650-sentinel implementation.
+  const isAll = pending === ALL_DAYS || pending > SLIDER_MAX;
   const displayValue = isAll ? t("sidebar.days_all") : pending;
   // Slider visual position must stay within [1, SLIDER_MAX]; "All" parks it
   // at the right edge.

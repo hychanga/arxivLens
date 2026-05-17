@@ -25,12 +25,10 @@ public final class PreferenceDtos {
     ) {}
 
     public record PreferenceUpdateRequest(
-            // Upper bound mirrors PaperService.MAX_FEED_DAYS — keep them aligned
-            // so the "2yr" / "All" quick filters in the sidebar can actually be
-            // saved (the lower 365 cap silently 400'd the PATCH and left the DB
-            // at the old value, which then snapped the slider back to 30 on the
-            // next preferences refresh).
-            @Min(1) @Max(3650) Integer queryDays,
+            // 0 = "All" sentinel (no upper bound on publishedAt — we have rows
+            // going back to 2009, older than any reasonable day-count cap).
+            // 1..3650 = "last N days" with the same ceiling PaperService uses.
+            @Min(0) @Max(3650) Integer queryDays,
             @Size(max = 32) String sortMode,
             Map<String, List<@Size(max = 64) String>> keywords,
             Long currentSourceId,

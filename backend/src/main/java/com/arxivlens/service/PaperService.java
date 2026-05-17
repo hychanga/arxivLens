@@ -88,9 +88,10 @@ public class PaperService {
     private static final java.util.Set<String> MANUAL_SOURCES = java.util.Set.of("hbr");
 
     /**
-     * Hard ceiling on the user-supplied "days" param. 3650 = ten years, large
-     * enough to act as "all time" in practice while still bounded so a typo
-     * doesn't pull every row.
+     * Hard ceiling on a numeric "last N days" filter. {@code days = 0} (and
+     * anything {@code <= 0}) is a separate "no upper bound" sentinel — older
+     * articles can legitimately predate any reasonable cap (we have rows
+     * going back to 2009), so we don't want a clamp to silently swallow them.
      */
     private static final int MAX_FEED_DAYS = 3650;
 
@@ -98,8 +99,21 @@ public class PaperService {
         long sourceId = sources.findByCode(sourceCode)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Unknown source: " + sourceCode))
                 .getId();
-        int safeDays = (days == null) ? 30 : Math.min(MAX_FEED_DAYS, Math.max(1, days));
-        Instant since = MANUAL_SOURCES.contains(sourceCode)
+        boolean noDateFilter;
+        int safeDays;
+        if (days == null) {
+            // Default for new sessions / unset prefs.
+            safeDays = 30;
+            noDateFilter = false;
+        } else if (days <= 0) {
+            // 0 = "All" sentinel from the sidebar's quick filter.
+            safeDays = 0;
+            noDateFilter = true;
+        } else {
+            safeDays = Math.min(MAX_FEED_DAYS, days);
+            noDateFilter = false;
+        }
+        Instant since = (noDateFilter || MANUAL_SOURCES.contains(sourceCode))
                 ? Instant.EPOCH
                 : Instant.now().minus(safeDays, ChronoUnit.DAYS);
         int safeSize = Math.min(100, Math.max(1, size));
