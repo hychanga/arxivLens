@@ -100,12 +100,35 @@ public class SchemaBootstrap {
                 "搜尋商業週刊網站，依關鍵字抓取最新文章列表。", 3);
     }
 
-    /** Idempotent INSERT IGNORE for a row in {@code data_sources}. */
+    /**
+     * Idempotent INSERT IGNORE for a row in {@code data_sources}. Explicitly sets
+     * {@code created_at = NOW(6)} because the column is {@code DATETIME(6) NOT NULL}
+     * without a SQL-level DEFAULT — leaving it out causes TiDB (and any non-strict
+     * MySQL) to write {@code 0000-00-00 00:00:00}, which the JDBC driver then
+     * refuses to read with "Zero date value prohibited" → every subsequent
+     * {@code SELECT} from {@code data_sources} 500s.
+     *
+     * <p>Also repairs any pre-existing zero-date rows so the first read after
+     * upgrade doesn't 500 just because of historical data written before this
+     * fix was in place.
+     */
     private void ensureSource(String code, String name, String description, int displayOrder) {
         try {
+            // Repair zero-date rows from earlier deploys before we INSERT or SELECT.
+            try {
+                int repaired = jdbc.update(
+                        "UPDATE data_sources SET created_at = NOW(6) "
+                                + "WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00.000000' "
+                                + "OR created_at = '0000-00-00 00:00:00'");
+                if (repaired > 0) {
+                    log.info("Schema bootstrap: repaired {} zero-date data_sources rows", repaired);
+                }
+            } catch (Exception e) {
+                log.warn("Schema bootstrap: zero-date repair failed — {}", e.getMessage());
+            }
             jdbc.update(
-                    "INSERT IGNORE INTO data_sources (code, name, description, is_enabled, display_order) "
-                            + "VALUES (?, ?, ?, 1, ?)",
+                    "INSERT IGNORE INTO data_sources (code, name, description, is_enabled, display_order, created_at) "
+                            + "VALUES (?, ?, ?, 1, ?, NOW(6))",
                     code, name, description, displayOrder);
             log.info("Schema bootstrap: data_sources row '{}' is present", code);
         } catch (Exception e) {
