@@ -97,7 +97,50 @@ public class SchemaBootstrap {
         addColumnIfMissing("paper_translations", "introduction", "TEXT NULL");
         // Add the businessweekly source row in prod (data.sql only runs locally).
         ensureSource("businessweekly", "商業週刊",
-                "搜尋商業週刊網站，依關鍵字抓取最新文章列表。", 3);
+                "手動加入商業週刊的文章。", 3);
+        // One-shot cleanup: the earlier BW auto-scrape wrote rows with external_id
+        // "bw-<section>-<id>" and broken titles. After switching BW to a manual
+        // paste source, those rows are orphans — clear them. Idempotent: a no-op
+        // once the legacy rows are gone, so safe to run on every startup.
+        purgeLegacyBusinessWeeklyPapers();
+    }
+
+    /**
+     * Removes every paper (and dependent rows) whose externalId starts with
+     * {@code "bw-"} — the prefix the old auto-scrape used. Manual BW articles
+     * added via the Feed page use the {@code "manual-"} prefix and are
+     * untouched.
+     */
+    private void purgeLegacyBusinessWeeklyPapers() {
+        try {
+            // Order matters: child tables first, then papers. No FK cascades
+            // are configured in our schema (we cascade in Java code), so each
+            // DELETE has to be explicit.
+            jdbc.update(
+                    "DELETE FROM paper_translations WHERE paper_id IN "
+                            + "(SELECT id FROM papers WHERE external_id LIKE 'bw-%')");
+            jdbc.update(
+                    "DELETE FROM ai_summaries WHERE favorite_id IN "
+                            + "(SELECT id FROM favorites WHERE paper_id IN "
+                            + "(SELECT id FROM papers WHERE external_id LIKE 'bw-%'))");
+            jdbc.update(
+                    "DELETE FROM favorites WHERE paper_id IN "
+                            + "(SELECT id FROM papers WHERE external_id LIKE 'bw-%')");
+            jdbc.update(
+                    "DELETE FROM download_blobs WHERE download_id IN "
+                            + "(SELECT id FROM downloads WHERE paper_id IN "
+                            + "(SELECT id FROM papers WHERE external_id LIKE 'bw-%'))");
+            jdbc.update(
+                    "DELETE FROM downloads WHERE paper_id IN "
+                            + "(SELECT id FROM papers WHERE external_id LIKE 'bw-%')");
+            int papersDeleted = jdbc.update(
+                    "DELETE FROM papers WHERE external_id LIKE 'bw-%'");
+            if (papersDeleted > 0) {
+                log.info("Purged {} legacy Business Weekly auto-synced paper(s)", papersDeleted);
+            }
+        } catch (Exception e) {
+            log.warn("Schema bootstrap: BW legacy purge failed — {}", e.getMessage());
+        }
     }
 
     /**

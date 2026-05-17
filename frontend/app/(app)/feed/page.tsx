@@ -172,11 +172,17 @@ export default function FeedPage() {
           })}
         </div>
 
-        {/* Manual paste lives only on HBR. arXiv has a working RSS sync so the
-            button would just confuse — every arXiv paper there is already there. */}
-        {currentSource && currentSourceCode === "hbr" && (
+        {/* Manual paste is for sources without a working auto-sync (HBR's
+            content is paywalled; Business Weekly's search-page markup
+            varied too much to scrape reliably). arXiv has a real RSS-style
+            sync, so its button stays hidden — papers are already there. */}
+        {currentSource && (currentSourceCode === "hbr" || currentSourceCode === "businessweekly") && (
           <div className="ml-auto">
-            <AddArticleButton sourceId={currentSource.id} onAdded={() => void fetchPapers()} />
+            <AddArticleButton
+              sourceId={currentSource.id}
+              sourceCode={currentSourceCode}
+              onAdded={() => void fetchPapers()}
+            />
           </div>
         )}
 

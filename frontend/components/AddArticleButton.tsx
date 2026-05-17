@@ -23,7 +23,26 @@ import { useUiStore } from "@/store/ui";
  */
 interface Props {
   sourceId: number;
+  /**
+   * Source code of the current feed (e.g. {@code "hbr"}, {@code "businessweekly"}).
+   * Drives the inline URL warning — if the typed URL doesn't contain a
+   * substring matching the source's domain, we flag it before submit.
+   */
+  sourceCode?: string;
   onAdded?: () => void;
+}
+
+/**
+ * Substring we expect to find inside a URL pasted in URL-import mode for the
+ * given source. Used by the inline warning that nudges the user when they
+ * paste an obvious mismatch (HBR URL while on the Business Weekly tab, etc.).
+ */
+function expectedUrlSubstring(sourceCode: string | undefined): string | null {
+  switch (sourceCode) {
+    case "hbr": return "hbr";
+    case "businessweekly": return "businessweekly";
+    default: return null;
+  }
 }
 
 interface ManualResponse {
@@ -36,7 +55,7 @@ interface ManualResponse {
 
 type Mode = "url" | "paste";
 
-export default function AddArticleButton({ sourceId, onAdded }: Props) {
+export default function AddArticleButton({ sourceId, sourceCode, onAdded }: Props) {
   const t = useT();
   const flash = useUiStore((s) => s.flash);
 
@@ -174,14 +193,20 @@ export default function AddArticleButton({ sourceId, onAdded }: Props) {
                     placeholder="https://www.hbrtaiwan.com/article/..."
                     className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   />
-                  {importUrl.trim() && !importUrl.toLowerCase().includes("hbr") && (
-                    <p
-                      role="alert"
-                      className="mt-1 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1"
-                    >
-                      ⚠ {t("feed.add_url_warn_not_hbr")}
-                    </p>
-                  )}
+                  {(() => {
+                    const expected = expectedUrlSubstring(sourceCode);
+                    if (!expected) return null;
+                    if (!importUrl.trim()) return null;
+                    if (importUrl.toLowerCase().includes(expected)) return null;
+                    return (
+                      <p
+                        role="alert"
+                        className="mt-1 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1"
+                      >
+                        ⚠ {t("feed.add_url_warn_wrong_source")}
+                      </p>
+                    );
+                  })()}
                 </div>
                 <DialogFooter
                   onCancel={() => setOpen(false)}
