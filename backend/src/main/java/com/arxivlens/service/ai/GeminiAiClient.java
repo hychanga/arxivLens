@@ -254,7 +254,8 @@ public class GeminiAiClient implements AiClient {
         sb.append("- Preserve technical terminology and proper nouns when there is no idiomatic translation.\n");
         sb.append("- Keep the meaning faithful; do not summarize or shorten.\n");
         sb.append("- Preserve paragraph breaks exactly as in the source.\n");
-        sb.append("- Output ONLY a JSON object matching the schema. No markdown, no commentary.\n\n");
+        sb.append("- Preserve any markdown image markers `![alt](url)` verbatim. The URL inside the parentheses must NOT be translated, paraphrased, or modified. The alt text inside the brackets MAY be translated.\n");
+        sb.append("- Output ONLY a JSON object matching the schema. No markdown fences, no commentary.\n\n");
         sb.append("=== INPUT ===\n");
         sb.append("Title: ").append(title == null ? "" : title).append("\n\n");
         sb.append("Abstract:\n").append(abstractText == null ? "" : abstractText).append("\n");

@@ -95,15 +95,28 @@ public final class HtmlExtractor {
             "<body\\b[^>]*>([\\s\\S]*?)</body>", Pattern.CASE_INSENSITIVE);
 
     // Tags whose content is noise rather than article body. Drop the whole element.
+    // (figure/figcaption intentionally NOT in this list: news articles wrap their
+    // images in <figure>, and we want the images to survive the extraction so
+    // imgToMarkdown below can capture their src.)
     private static final Pattern NOISE_TAGS = Pattern.compile(
-            "<(script|style|noscript|svg|header|nav|footer|aside|form|button|figure|figcaption|iframe)\\b[^>]*>" +
+            "<(script|style|noscript|svg|header|nav|footer|aside|form|button|iframe)\\b[^>]*>" +
             "[\\s\\S]*?</\\1>",
             Pattern.CASE_INSENSITIVE);
 
     // Self-closing variants of the same (e.g. `<svg .../>`).
     private static final Pattern NOISE_VOID = Pattern.compile(
-            "<(script|style|noscript|svg|header|nav|footer|aside|form|button|figure|figcaption|iframe)\\b[^/>]*/>",
+            "<(script|style|noscript|svg|header|nav|footer|aside|form|button|iframe)\\b[^/>]*/>",
             Pattern.CASE_INSENSITIVE);
+
+    /** Matches an entire {@code <img …>} element. Group 1 captures the attribute soup. */
+    private static final Pattern IMG_TAG = Pattern.compile(
+            "<img\\b([^>]*)/?>", Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern SRC_ATTR = Pattern.compile(
+            "\\bsrc\\s*=\\s*[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern ALT_ATTR_INNER = Pattern.compile(
+            "\\balt\\s*=\\s*[\"']([^\"']*)[\"']", Pattern.CASE_INSENSITIVE);
 
     // Block-level tags whose boundaries are paragraph breaks once we strip markup.
     private static final Pattern BLOCK_BOUNDARIES = Pattern.compile(
@@ -113,12 +126,22 @@ public final class HtmlExtractor {
     private static final Pattern ANY_TAG = Pattern.compile("<[^>]+>");
 
     public static ExtractedArticle extract(String html) {
+        return extract(html, null);
+    }
+
+    /**
+     * Extracts the title, body text, and publish date from {@code html}. When
+     * {@code baseUrl} is non-null, relative {@code <img src>} URLs are resolved
+     * against it so the resulting markdown image markers point at the real
+     * absolute URL (otherwise the frontend would render broken paths).
+     */
+    public static ExtractedArticle extract(String html, String baseUrl) {
         if (html == null) {
             return new ExtractedArticle("", "", null);
         }
         String title = pickTitle(html);
         Instant publishedAt = pickPublishedAt(html);
-        String content = postProcess(pickContent(html), title);
+        String content = postProcess(pickContent(html, baseUrl), title);
         return new ExtractedArticle(title, content, publishedAt);
     }
 
@@ -185,16 +208,20 @@ public final class HtmlExtractor {
         }
     }
 
-    private static String pickContent(String html) {
+    private static String pickContent(String html, String baseUrl) {
         String raw = firstGroup(ARTICLE_TAG, html);
         if (raw == null) raw = firstGroup(MAIN_TAG, html);
         if (raw == null) raw = firstGroup(BODY_TAG, html);
         if (raw == null) raw = html;
-        return cleanText(raw);
+        return cleanText(raw, baseUrl);
     }
 
-    private static String cleanText(String htmlFragment) {
+    private static String cleanText(String htmlFragment, String baseUrl) {
         String s = htmlFragment;
+        // Convert <img> to markdown image markers BEFORE stripping any tags so
+        // the URL survives. The frontend re-renders these as <img> elements
+        // inside the article body.
+        s = imgToMarkdown(s, baseUrl);
         s = NOISE_TAGS.matcher(s).replaceAll(" ");
         s = NOISE_VOID.matcher(s).replaceAll(" ");
         s = BLOCK_BOUNDARIES.matcher(s).replaceAll("\n");
@@ -205,6 +232,61 @@ public final class HtmlExtractor {
         s = s.replaceAll(" *\\n *", "\n");
         s = s.replaceAll("\\n{3,}", "\n\n");
         return s.trim();
+    }
+
+    /**
+     * Replaces every {@code <img …>} tag in {@code s} with a markdown image
+     * marker — {@code ![alt](src)} — on its own line. {@code src=""}, anchors
+     * like {@code about:blank}, and data-URLs are dropped. Relative URLs are
+     * resolved against {@code baseUrl} when possible so the frontend can
+     * render them directly.
+     */
+    static String imgToMarkdown(String s, String baseUrl) {
+        if (s == null || s.indexOf("<img") < 0) return s;
+        StringBuilder out = new StringBuilder(s.length());
+        Matcher m = IMG_TAG.matcher(s);
+        int last = 0;
+        while (m.find()) {
+            out.append(s, last, m.start());
+            String attrs = m.group(1);
+            String src = firstGroup(SRC_ATTR, attrs);
+            if (src == null || src.isBlank()) {
+                last = m.end();
+                continue;
+            }
+            String abs = absolutize(src.trim(), baseUrl);
+            if (abs == null) {
+                last = m.end();
+                continue;
+            }
+            String alt = firstGroup(ALT_ATTR_INNER, attrs);
+            String safeAlt = alt == null ? "" : alt.replace('\n', ' ').replace(']', ' ').trim();
+            out.append("\n![").append(safeAlt).append("](").append(abs).append(")\n");
+            last = m.end();
+        }
+        out.append(s, last, s.length());
+        return out.toString();
+    }
+
+    private static String absolutize(String src, String baseUrl) {
+        // Drop data: URIs and obviously empty refs — they're either inline
+        // placeholders or trackers we don't want in saved articles.
+        if (src.startsWith("data:") || src.startsWith("about:") || src.startsWith("#")) {
+            return null;
+        }
+        if (src.startsWith("//")) return "https:" + src;
+        if (src.startsWith("http://") || src.startsWith("https://")) return src;
+        if (baseUrl == null || baseUrl.isBlank()) {
+            // Without a base, we can't safely resolve relative paths — better
+            // to drop than to emit a broken marker the frontend renders blank.
+            return null;
+        }
+        try {
+            java.net.URI base = java.net.URI.create(baseUrl);
+            return base.resolve(src).toString();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static String firstGroup(Pattern p, String input) {

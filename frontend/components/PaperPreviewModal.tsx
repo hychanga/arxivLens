@@ -263,8 +263,49 @@ export default function PaperPreviewModal() {
     return (
       <div>
         <div className="text-xs uppercase tracking-wide text-zinc-500 mb-1">{title}</div>
-        <p className="leading-relaxed whitespace-pre-line">{body}</p>
+        <BodyContent body={body} />
       </div>
     );
   }
+}
+
+/**
+ * Renders an article body that may contain inline markdown image markers
+ * ({@code ![alt](url)}) produced by the backend's {@code HtmlExtractor}.
+ * Splits on the marker pattern, renders each chunk either as a paragraph of
+ * text (newlines preserved) or as an {@code <img>}.
+ */
+const IMG_MARKER = /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g;
+
+function BodyContent({ body }: { body: string }) {
+  if (!body) return null;
+  const parts: Array<{ kind: "text" | "img"; value: string; alt?: string }> = [];
+  let last = 0;
+  for (const m of body.matchAll(IMG_MARKER)) {
+    if (m.index! > last) {
+      parts.push({ kind: "text", value: body.slice(last, m.index!) });
+    }
+    parts.push({ kind: "img", value: m[2], alt: m[1] });
+    last = m.index! + m[0].length;
+  }
+  if (last < body.length) {
+    parts.push({ kind: "text", value: body.slice(last) });
+  }
+  return (
+    <div className="leading-relaxed">
+      {parts.map((p, i) =>
+        p.kind === "img" ? (
+          <img
+            key={i}
+            src={p.value}
+            alt={p.alt ?? ""}
+            loading="lazy"
+            className="my-3 max-w-full rounded border border-zinc-200 dark:border-zinc-800"
+          />
+        ) : p.value.trim() ? (
+          <p key={i} className="whitespace-pre-line">{p.value}</p>
+        ) : null
+      )}
+    </div>
+  );
 }

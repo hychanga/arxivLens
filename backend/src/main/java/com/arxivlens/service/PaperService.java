@@ -175,7 +175,10 @@ public class PaperService {
         }
 
         String html = fetchHtml(req.url());
-        HtmlExtractor.ExtractedArticle extracted = HtmlExtractor.extract(html);
+        // Pass the article URL as baseUrl so relative <img src> attributes
+        // are resolved into absolute URLs — the frontend renders the markdown
+        // image markers as <img> tags directly, with no second resolution pass.
+        HtmlExtractor.ExtractedArticle extracted = HtmlExtractor.extract(html, req.url());
 
         if (extracted.title() == null || extracted.title().isBlank()) {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY,
