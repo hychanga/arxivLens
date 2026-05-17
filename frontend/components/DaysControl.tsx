@@ -9,8 +9,20 @@ interface Props {
   onApply: (next: number) => void;
 }
 
-/** Upper bound of the date filter. 3650 days = ten years, effectively "all time". */
-const MAX_DAYS = 3650;
+/**
+ * Slider tops out at 2 years so each pixel actually maps to a useful step
+ * (1px ≈ 3 days on a typical sidebar width). Anything beyond that is the
+ * "All" sentinel below — the slider can't span both ranges without becoming
+ * unusable for short windows.
+ */
+const SLIDER_MAX = 730;
+
+/**
+ * Sentinel value persisted in {@code queryDays} to mean "no upper bound".
+ * Backend treats it the same as any large value (it clamps to 3650 = ten
+ * years, which exceeds anything in our data set).
+ */
+const ALL_DAYS = 3650;
 
 const QUICK = [
   { d: 7,    label: "7d"  },
@@ -19,7 +31,7 @@ const QUICK = [
   { d: 180,  label: "6mo" },
   { d: 365,  label: "1yr" },
   { d: 730,  label: "2yr" },
-  { d: MAX_DAYS, label: "All" },
+  { d: ALL_DAYS, label: "All" },
 ];
 
 export default function DaysControl({ days, onApply }: Props) {
@@ -35,14 +47,22 @@ export default function DaysControl({ days, onApply }: Props) {
   }, [appliedFlash]);
 
   function apply(next: number) {
-    const v = clamp(Math.round(next), 1, MAX_DAYS);
+    const rounded = Math.round(next);
+    // Anything past the slider top jumps to the All sentinel; otherwise
+    // clamp to the slider range so e.g. accidental negative values from
+    // older persisted prefs don't poison the UI.
+    const v = rounded > SLIDER_MAX ? ALL_DAYS : clamp(rounded, 1, SLIDER_MAX);
     onApply(v);
     setPending(v);
     setAppliedFlash(true);
   }
 
   const dirty = pending !== days;
-  const displayValue = pending >= MAX_DAYS ? t("sidebar.days_all") : pending;
+  const isAll = pending >= ALL_DAYS;
+  const displayValue = isAll ? t("sidebar.days_all") : pending;
+  // Slider visual position must stay within [1, SLIDER_MAX]; "All" parks it
+  // at the right edge.
+  const sliderValue = isAll ? SLIDER_MAX : Math.min(Math.max(pending, 1), SLIDER_MAX);
 
   return (
     <div className="space-y-2">
@@ -55,8 +75,8 @@ export default function DaysControl({ days, onApply }: Props) {
       <input
         type="range"
         min={1}
-        max={MAX_DAYS}
-        value={pending}
+        max={SLIDER_MAX}
+        value={sliderValue}
         onChange={(e) => setPending(Number(e.target.value))}
         className="w-full"
       />
