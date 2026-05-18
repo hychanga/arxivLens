@@ -111,6 +111,13 @@ function LoginPageInner() {
   const [oauthBusy, setOauthBusy] = useState<"google" | "apple" | null>(null);
   const [oauthError, setOauthError] = useState<string | null>(null);
 
+  // Controlled so React 19's auto form-reset after a form action runs doesn't
+  // wipe the user's typed credentials. Without this, the second-step OTP
+  // re-render shows the demo defaults again, which is what the user typed
+  // over in the first place.
+  const [email, setEmail] = useState("demo@arxivlens.local");
+  const [password, setPassword] = useState("demo123");
+
   useEffect(() => {
     hydrate();
     hydrateLocale();
@@ -167,7 +174,8 @@ function LoginPageInner() {
             type="email"
             label={t("login.email")}
             required
-            defaultValue={mode === "forgot" ? "" : "demo@arxivlens.local"}
+            value={email}
+            onValueChange={setEmail}
             autoComplete="email"
           />
           {mode !== "forgot" && (
@@ -176,7 +184,8 @@ function LoginPageInner() {
               type="password"
               label={t("login.password")}
               required
-              defaultValue="demo123"
+              value={password}
+              onValueChange={setPassword}
               minLength={mode === "register" ? 8 : undefined}
               autoComplete={mode === "register" ? "new-password" : "current-password"}
             />
@@ -393,6 +402,8 @@ function Field({
   minLength,
   autoComplete,
   defaultValue,
+  value,
+  onValueChange,
 }: {
   name: string;
   label: string;
@@ -400,9 +411,14 @@ function Field({
   required?: boolean;
   minLength?: number;
   autoComplete?: string;
+  /** Uncontrolled initial value. Ignored when {@code value}+{@code onValueChange} are supplied. */
   defaultValue?: string;
+  /** Controlled value. Pair with {@code onValueChange} to preserve input across form-action re-renders. */
+  value?: string;
+  onValueChange?: (next: string) => void;
 }) {
   const id = `f_${name}`;
+  const controlled = value !== undefined;
   return (
     <div>
       <label htmlFor={id} className="block text-sm mb-1">{label}</label>
@@ -413,7 +429,9 @@ function Field({
         required={required}
         minLength={minLength}
         autoComplete={autoComplete}
-        defaultValue={defaultValue}
+        {...(controlled
+          ? { value, onChange: (e) => onValueChange?.(e.target.value) }
+          : { defaultValue })}
         className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
       />
     </div>
