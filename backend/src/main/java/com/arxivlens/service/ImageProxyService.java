@@ -33,21 +33,28 @@ public class ImageProxyService {
     private static final long MAX_IMAGE_BYTES = 8L * 1024 * 1024; // 8 MB
 
     /**
-     * Hosts we're willing to proxy from. Whitelist over allow-all so a
-     * malicious markdown body can't make our backend hit arbitrary intranet
-     * services. Add new hosts here when a new publisher source is wired up.
+     * Domain suffixes we'll proxy from. Both the bare domain and any subdomain
+     * are accepted, so {@code images.hbrtaiwan.com} / {@code cdn.hbrtaiwan.com}
+     * / etc. all pass without having to enumerate every CDN host the
+     * publisher uses. Suffixes (not arbitrary host substrings) over allow-all
+     * so a malicious markdown body still can't make our backend hit intranet
+     * services. Add new entries when wiring up a new publisher source.
      */
-    private static final Set<String> ALLOWED_HOSTS = Set.of(
-            "ibw.bwnet.com.tw",
-            "img.bwnet.com.tw",
-            "image.bwnet.com.tw",
-            "www.businessweekly.com.tw",
+    private static final Set<String> ALLOWED_HOST_SUFFIXES = Set.of(
+            "bwnet.com.tw",
             "businessweekly.com.tw",
-            "www.hbrtaiwan.com",
             "hbrtaiwan.com",
-            "hbr.org",
-            "www.hbr.org"
+            "hbr.org"
     );
+
+    private static boolean hostAllowed(String host) {
+        if (host == null) return false;
+        String h = host.toLowerCase();
+        for (String suffix : ALLOWED_HOST_SUFFIXES) {
+            if (h.equals(suffix) || h.endsWith("." + suffix)) return true;
+        }
+        return false;
+    }
 
     /** Content-Types we consider real image responses. */
     private static final Set<String> ALLOWED_CT_PREFIXES = Set.of(
@@ -102,7 +109,7 @@ public class ImageProxyService {
         } catch (IllegalArgumentException e) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Bad image URL: " + e.getMessage());
         }
-        if (uri.getHost() == null || !ALLOWED_HOSTS.contains(uri.getHost().toLowerCase())) {
+        if (!hostAllowed(uri.getHost())) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Image host not on allow-list: " + uri.getHost());
         }
         if (uri.getScheme() == null

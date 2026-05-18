@@ -45,7 +45,10 @@ const initial = (): Pick<
 export const usePapersStore = create<PapersState>((set, get) => ({
   ...initial(),
 
-  setSource: (s) => set({ source: s, page: 0, selected: new Set() }),
+  // Reset topic on source change — topics are per-source (arXiv's "cs.AI" has
+  // no meaning on HBR / Business Weekly), so leaving the old topic selected
+  // would silently filter the new feed to zero rows.
+  setSource: (s) => set({ source: s, page: 0, topic: null, selected: new Set() }),
   setDays: (d) => set({ days: d, page: 0 }),
   setTopic: (t) => set({ topic: t, page: 0 }),
   setPage: (p) => set({ page: p }),
