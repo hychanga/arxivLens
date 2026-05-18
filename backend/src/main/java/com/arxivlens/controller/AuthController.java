@@ -6,10 +6,15 @@ import com.arxivlens.dto.AuthDtos.LoginRequest;
 import com.arxivlens.dto.AuthDtos.OAuthLoginRequest;
 import com.arxivlens.dto.AuthDtos.RegisterRequest;
 import com.arxivlens.dto.AuthDtos.ResetPasswordRequest;
+import com.arxivlens.dto.AuthDtos.TwoFactorEnableRequest;
+import com.arxivlens.dto.AuthDtos.TwoFactorSetupResponse;
+import com.arxivlens.dto.AuthDtos.TwoFactorStatusResponse;
 import com.arxivlens.service.AuthService;
 import com.arxivlens.service.PasswordResetService;
+import com.arxivlens.web.AuthUtil;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -68,5 +73,29 @@ public class AuthController {
     public ResponseEntity<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest req) {
         passwordReset.resetPassword(req);
         return ResponseEntity.noContent().build();
+    }
+
+    // ---- Two-factor (TOTP) management. All four endpoints require an
+    // authenticated session; the SecurityConfig rule for /api/auth/2fa/**
+    // takes precedence over the broader /api/auth/** permitAll. ----
+
+    @GetMapping("/2fa/status")
+    public TwoFactorStatusResponse twoFactorStatus() {
+        return auth.getTwoFactorStatus(AuthUtil.currentUserId());
+    }
+
+    @PostMapping("/2fa/setup")
+    public TwoFactorSetupResponse twoFactorSetup() {
+        return auth.startTwoFactorSetup(AuthUtil.currentUserId());
+    }
+
+    @PostMapping("/2fa/enable")
+    public TwoFactorStatusResponse twoFactorEnable(@Valid @RequestBody TwoFactorEnableRequest req) {
+        return auth.enableTwoFactor(AuthUtil.currentUserId(), req);
+    }
+
+    @PostMapping("/2fa/disable")
+    public TwoFactorStatusResponse twoFactorDisable() {
+        return auth.disableTwoFactor(AuthUtil.currentUserId());
     }
 }

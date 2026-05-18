@@ -49,6 +49,16 @@ public class User {
     @Column(nullable = false, length = 32)
     private String role = "USER";
 
+    /**
+     * Base32-encoded TOTP secret. Null when 2FA is disabled. Stored alongside
+     * the password hash; we trust transport-level encryption and TiDB at-rest
+     * encryption — a stricter design would encrypt this column with a separate
+     * KMS key, but for a single-admin hobby deployment that's overkill.
+     */
+    @JsonIgnore
+    @Column(name = "totp_secret", length = 64)
+    private String totpSecret;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

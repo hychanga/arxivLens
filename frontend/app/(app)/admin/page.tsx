@@ -148,6 +148,8 @@ export default function AdminPage() {
     <div className="space-y-6">
       <h1 className="text-lg font-semibold">{t("nav.admin")}</h1>
 
+      <TwoFactorSection />
+
       {/* Settings */}
       <section className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 space-y-3">
         <h2 className="font-semibold">{t("admin.search_defaults")}</h2>
@@ -380,5 +382,162 @@ function NumberField({
         </button>
       </span>
     </label>
+  );
+}
+
+/**
+ * Self-contained two-factor enrolment widget. Reads /auth/2fa/status on mount,
+ * lets the admin walk through the setup → verify flow (QR rendered via the
+ * external qrserver.com service so we don't have to bundle a QR library), and
+ * exposes a Disable button when 2FA is on.
+ */
+function TwoFactorSection() {
+  const t = useT();
+  const flash = useUiStore((s) => s.flash);
+  const ask = useUiStore((s) => s.ask);
+  const [status, setStatus] = useState<{ enabled: boolean } | null>(null);
+  const [setup, setSetup] = useState<{ secret: string; otpauthUri: string } | null>(null);
+  const [verifyCode, setVerifyCode] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    apiFetch<{ enabled: boolean }>("/auth/2fa/status")
+      .then(setStatus)
+      .catch(() => setStatus({ enabled: false }));
+  }, []);
+
+  async function startSetup() {
+    setBusy(true);
+    try {
+      const res = await apiFetch<{ secret: string; otpauthUri: string }>("/auth/2fa/setup", { method: "POST" });
+      setSetup(res);
+      setVerifyCode("");
+    } catch (e) {
+      flash(e instanceof Error ? e.message : "Setup failed", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function verifyAndEnable() {
+    if (!setup || verifyCode.length !== 6) return;
+    setBusy(true);
+    try {
+      await apiFetch("/auth/2fa/enable", {
+        method: "POST",
+        body: { secret: setup.secret, code: verifyCode },
+      });
+      setStatus({ enabled: true });
+      setSetup(null);
+      setVerifyCode("");
+      flash(t("login.2fa_enabled"), "success");
+    } catch (e) {
+      flash(e instanceof Error ? e.message : "Verification failed", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function disable() {
+    ask({
+      title: t("login.2fa_section"),
+      message: t("login.2fa_disable") + "?",
+      confirmLabel: t("login.2fa_disable"),
+      danger: true,
+      onConfirm: async () => {
+        setBusy(true);
+        try {
+          await apiFetch("/auth/2fa/disable", { method: "POST" });
+          setStatus({ enabled: false });
+          flash(t("login.2fa_disabled"), "success");
+        } catch (e) {
+          flash(e instanceof Error ? e.message : "Disable failed", "error");
+        } finally {
+          setBusy(false);
+        }
+      },
+    });
+  }
+
+  if (status === null) return null;
+
+  return (
+    <section className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 space-y-3">
+      <h2 className="font-semibold">{t("login.2fa_section")}</h2>
+      <p className="text-sm text-zinc-500">
+        {status.enabled ? t("login.2fa_enabled") : t("login.2fa_disabled")}
+      </p>
+
+      {!status.enabled && !setup && (
+        <button
+          type="button"
+          onClick={startSetup}
+          disabled={busy}
+          className="rounded-md bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 text-white px-3 py-1.5 text-sm disabled:opacity-50"
+        >
+          {t("login.2fa_enable")}
+        </button>
+      )}
+
+      {!status.enabled && setup && (
+        <div className="space-y-3">
+          <p className="text-sm text-zinc-600 dark:text-zinc-300">{t("login.2fa_scan_hint")}</p>
+          {/*
+            Render the otpauth URI as a QR via the qrserver public API. The
+            URL is short, contains only our own secret bytes, and the request
+            goes out as a normal img — no third-party JS bundled.
+          */}
+          <img
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(setup.otpauthUri)}`}
+            alt="otpauth QR code"
+            width={200}
+            height={200}
+            className="border border-zinc-200 dark:border-zinc-700 rounded"
+          />
+          <p className="text-xs text-zinc-500">
+            Secret: <code className="font-mono">{setup.secret}</code>
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="\d{6}"
+              maxLength={6}
+              value={verifyCode}
+              onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="123456"
+              className="w-32 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-sm tracking-widest text-center"
+            />
+            <button
+              type="button"
+              onClick={verifyAndEnable}
+              disabled={busy || verifyCode.length !== 6}
+              className="rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 text-sm disabled:opacity-50"
+            >
+              {t("login.2fa_verify")}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setSetup(null); setVerifyCode(""); }}
+              disabled={busy}
+              className="rounded-md bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 px-3 py-1.5 text-sm"
+            >
+              {t("login.2fa_cancel")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {status.enabled && (
+        <button
+          type="button"
+          onClick={disable}
+          disabled={busy}
+          className="rounded-md border border-red-300 dark:border-red-700 text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 px-3 py-1.5 text-sm disabled:opacity-50"
+        >
+          {t("login.2fa_disable")}
+        </button>
+      )}
+    </section>
   );
 }

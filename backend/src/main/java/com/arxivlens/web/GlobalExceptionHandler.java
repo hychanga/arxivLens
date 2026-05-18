@@ -19,7 +19,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<Map<String, Object>> handleApi(ApiException ex) {
-        return build(ex.getStatus(), ex.getMessage(), null);
+        return build(ex.getStatus(), ex.getMessage(), null, ex.getCode());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -53,11 +53,19 @@ public class GlobalExceptionHandler {
     }
 
     private ResponseEntity<Map<String, Object>> build(HttpStatus status, String message, Map<String, String> fields) {
+        return build(status, message, fields, null);
+    }
+
+    private ResponseEntity<Map<String, Object>> build(HttpStatus status, String message,
+                                                       Map<String, String> fields, String code) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", Instant.now().toString());
         body.put("status", status.value());
         body.put("error", status.getReasonPhrase());
         body.put("message", message);
+        if (code != null) {
+            body.put("code", code);
+        }
         if (fields != null && !fields.isEmpty()) {
             body.put("fields", fields);
         }

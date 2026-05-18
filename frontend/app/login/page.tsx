@@ -6,6 +6,7 @@ import { useAuthStore } from "@/store/auth";
 import { useLocaleStore } from "@/store/locale";
 import { useThemeStore } from "@/store/theme";
 import { useT } from "@/lib/i18n";
+import { HttpError } from "@/lib/api";
 import LocaleSelector from "@/components/LocaleSelector";
 import ThemeToggle from "@/components/ThemeToggle";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
@@ -17,9 +18,16 @@ interface FormState {
   /** Set on a successful forgot-password submission. Used to render the "check your email" message. */
   forgotSent: boolean;
   error: string | null;
+  /**
+   * Set when the backend responds {@code 401 code=OTP_REQUIRED} — credentials
+   * were OK but the account has 2FA enabled. The form re-renders with an OTP
+   * field; the email/password inputs stay mounted so the user's typed values
+   * roll forward on the resubmit.
+   */
+  otpRequired: boolean;
 }
 
-const INITIAL_STATE: FormState = { ok: false, forgotSent: false, error: null };
+const INITIAL_STATE: FormState = { ok: false, forgotSent: false, error: null, otpRequired: false };
 
 /**
  * React 19 client action — runs on form submit. Pulls fields from FormData,
@@ -31,12 +39,13 @@ async function submitAuth(_prev: FormState, formData: FormData): Promise<FormSta
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const displayName = String(formData.get("displayName") ?? "").trim();
+  const otp = String(formData.get("otp") ?? "").trim();
 
   if (!email) {
-    return { ok: false, forgotSent: false, error: "Email is required" };
+    return { ok: false, forgotSent: false, error: "Email is required", otpRequired: false };
   }
   if (mode !== "forgot" && !password) {
-    return { ok: false, forgotSent: false, error: "Password is required" };
+    return { ok: false, forgotSent: false, error: "Password is required", otpRequired: false };
   }
 
   try {
@@ -45,16 +54,35 @@ async function submitAuth(_prev: FormState, formData: FormData): Promise<FormSta
       await store.register(email, password, displayName);
     } else if (mode === "forgot") {
       await store.requestPasswordReset(email);
-      return { ok: false, forgotSent: true, error: null };
+      return { ok: false, forgotSent: true, error: null, otpRequired: false };
     } else {
-      await store.login(email, password);
+      await store.login(email, password, otp || undefined);
     }
-    return { ok: true, forgotSent: false, error: null };
+    return { ok: true, forgotSent: false, error: null, otpRequired: false };
   } catch (err) {
+    if (err instanceof HttpError) {
+      const code = err.payload?.code;
+      // Password matched but the account requires a 2FA code — surface the
+      // OTP field and let the user retry. OTP_INVALID re-renders the same
+      // step with an error so the user can correct a typo without starting
+      // over from the email field.
+      if (code === "OTP_REQUIRED") {
+        return { ok: false, forgotSent: false, error: null, otpRequired: true };
+      }
+      if (code === "OTP_INVALID") {
+        return {
+          ok: false,
+          forgotSent: false,
+          error: err.payload?.message ?? "Invalid OTP",
+          otpRequired: true,
+        };
+      }
+    }
     return {
       ok: false,
       forgotSent: false,
       error: err instanceof Error ? err.message : "Authentication failed",
+      otpRequired: false,
     };
   }
 }
@@ -154,7 +182,27 @@ function LoginPageInner() {
             />
           )}
 
-          {mode === "login" && (
+          {mode === "login" && state.otpRequired && (
+            <div>
+              <label htmlFor="f_otp" className="block text-sm mb-1">{t("login.otp_label")}</label>
+              <input
+                id="f_otp"
+                name="otp"
+                type="text"
+                inputMode="numeric"
+                pattern="\d{6}"
+                maxLength={6}
+                required
+                autoFocus
+                autoComplete="one-time-code"
+                placeholder="123456"
+                className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-sm tracking-widest text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              />
+              <p className="mt-1 text-xs text-zinc-500">{t("login.otp_hint")}</p>
+            </div>
+          )}
+
+          {mode === "login" && !state.otpRequired && (
             <div className="-mt-2 text-right">
               <button
                 type="button"

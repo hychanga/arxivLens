@@ -142,6 +142,12 @@ export interface ApiError {
   status: number;
   error: string;
   message: string;
+  /**
+   * Machine-readable code attached to domain-specific errors (e.g.
+   * {@code "OTP_REQUIRED"} on a 401 when the password matched but 2FA needs a
+   * code). Absent for generic errors.
+   */
+  code?: string;
   fields?: Record<string, string>;
 }
 

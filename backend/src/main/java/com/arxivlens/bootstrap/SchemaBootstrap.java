@@ -109,6 +109,10 @@ public class SchemaBootstrap {
         // flaky about ALTERing existing tables — same reason the per-table
         // CREATE IF NOT EXISTS calls exist above.
         addColumnIfMissing("paper_translations", "introduction", "TEXT NULL");
+        // TOTP secret for 2FA. Same belt-and-braces reasoning as the other
+        // ALTER calls — managed TiDB has been flaky about ddl-auto picking
+        // up new columns.
+        addColumnIfMissing("users", "totp_secret", "VARCHAR(64) NULL");
         // Add the businessweekly source row in prod (data.sql only runs locally).
         ensureSource("businessweekly", "商業週刊",
                 "手動加入商業週刊的文章。", 3);

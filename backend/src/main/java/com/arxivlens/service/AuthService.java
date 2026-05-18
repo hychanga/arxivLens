@@ -3,6 +3,9 @@ package com.arxivlens.service;
 import com.arxivlens.dto.AuthDtos.AuthResponse;
 import com.arxivlens.dto.AuthDtos.LoginRequest;
 import com.arxivlens.dto.AuthDtos.RegisterRequest;
+import com.arxivlens.dto.AuthDtos.TwoFactorEnableRequest;
+import com.arxivlens.dto.AuthDtos.TwoFactorSetupResponse;
+import com.arxivlens.dto.AuthDtos.TwoFactorStatusResponse;
 import com.arxivlens.dto.AuthDtos.UserSummary;
 import com.arxivlens.entity.User;
 import com.arxivlens.repository.UserRepository;
@@ -16,17 +19,26 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AuthService {
 
+    /** Error code returned on 401 when password is OK but OTP is missing/wrong. */
+    public static final String CODE_OTP_REQUIRED = "OTP_REQUIRED";
+    public static final String CODE_OTP_INVALID = "OTP_INVALID";
+
+    /** Issuer label that shows up in Authenticator apps for our otpauth URIs. */
+    private static final String OTP_ISSUER = "arxivLens";
+
     private final UserRepository users;
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final GoogleTokenVerifier googleVerifier;
+    private final TotpService totp;
 
     public AuthService(UserRepository users, PasswordEncoder encoder, JwtService jwt,
-                       GoogleTokenVerifier googleVerifier) {
+                       GoogleTokenVerifier googleVerifier, TotpService totp) {
         this.users = users;
         this.encoder = encoder;
         this.jwt = jwt;
         this.googleVerifier = googleVerifier;
+        this.totp = totp;
     }
 
     @Transactional
@@ -50,7 +62,63 @@ public class AuthService {
         if (u.getPasswordHash() == null || !encoder.matches(req.password(), u.getPasswordHash())) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
+        if (u.getTotpSecret() != null && !u.getTotpSecret().isBlank()) {
+            String otp = req.otp();
+            if (otp == null || otp.isBlank()) {
+                throw new ApiException(HttpStatus.UNAUTHORIZED, CODE_OTP_REQUIRED,
+                        "Two-factor authentication code required");
+            }
+            if (!totp.verify(u.getTotpSecret(), otp.trim())) {
+                throw new ApiException(HttpStatus.UNAUTHORIZED, CODE_OTP_INVALID,
+                        "Invalid two-factor authentication code");
+            }
+        }
         return buildResponse(u);
+    }
+
+    /**
+     * Generates a fresh TOTP secret + Authenticator-scannable otpauth URI but
+     * does NOT persist anything. The client renders the QR, asks the user to
+     * scan + enter the first code, then calls {@link #enableTwoFactor} which
+     * verifies the code against the secret and commits it. This two-step shape
+     * stops half-set-up accounts (secret saved but user never scanned).
+     */
+    @Transactional(readOnly = true)
+    public TwoFactorSetupResponse startTwoFactorSetup(Long userId) {
+        User u = users.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Stale session"));
+        String secret = totp.generateSecretBase32();
+        String otpauthUri = totp.buildOtpauthUri(OTP_ISSUER, u.getEmail(), secret);
+        return new TwoFactorSetupResponse(secret, otpauthUri);
+    }
+
+    @Transactional
+    public TwoFactorStatusResponse enableTwoFactor(Long userId, TwoFactorEnableRequest req) {
+        User u = users.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Stale session"));
+        if (!totp.verify(req.secret(), req.code().trim())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, CODE_OTP_INVALID,
+                    "Code did not match the secret. Re-scan and try again.");
+        }
+        u.setTotpSecret(req.secret());
+        users.save(u);
+        return new TwoFactorStatusResponse(true);
+    }
+
+    @Transactional
+    public TwoFactorStatusResponse disableTwoFactor(Long userId) {
+        User u = users.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Stale session"));
+        u.setTotpSecret(null);
+        users.save(u);
+        return new TwoFactorStatusResponse(false);
+    }
+
+    @Transactional(readOnly = true)
+    public TwoFactorStatusResponse getTwoFactorStatus(Long userId) {
+        User u = users.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Stale session"));
+        return new TwoFactorStatusResponse(u.getTotpSecret() != null && !u.getTotpSecret().isBlank());
     }
 
     /**

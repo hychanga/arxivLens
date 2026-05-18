@@ -18,7 +18,7 @@ interface AuthState {
   token: string | null;
   status: "idle" | "loading" | "authed" | "anon";
   error: string | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, otp?: string) => Promise<void>;
   register: (email: string, password: string, displayName: string) => Promise<void>;
   oauthLogin: (provider: OAuthProvider, idToken?: string) => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
@@ -63,12 +63,14 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ token, status: token ? "authed" : "anon" });
   },
 
-  login: async (email, password) => {
+  login: async (email, password, otp) => {
     set({ status: "loading", error: null });
     try {
       const res = await apiFetch<AuthResponse>("/auth/login", {
         method: "POST",
-        body: { email, password },
+        // otp is only included when present so an OTP-disabled account still
+        // gets the same compact request shape as before.
+        body: otp && otp.length > 0 ? { email, password, otp } : { email, password },
         auth: false,
       });
       applyAuthSuccess(set, res);

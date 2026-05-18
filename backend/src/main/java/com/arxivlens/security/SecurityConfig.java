@@ -81,6 +81,12 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(reg -> reg
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        // 2FA management endpoints must come BEFORE the broad
+                        // /api/auth/** permitAll below — first matching rule
+                        // wins, and these need a logged-in user (you can't
+                        // configure 2FA for an account you can't authenticate
+                        // as).
+                        .requestMatchers("/api/auth/2fa/**").authenticated()
                         .requestMatchers(
                                 "/api/auth/**",
                                 "/actuator/health",
