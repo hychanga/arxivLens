@@ -113,6 +113,8 @@ public class SchemaBootstrap {
         // ALTER calls — managed TiDB has been flaky about ddl-auto picking
         // up new columns.
         addColumnIfMissing("users", "totp_secret", "VARCHAR(64) NULL");
+        // Per-topic incremental sync watermark — see Topic.lastSyncedAt.
+        addColumnIfMissing("topics", "last_synced_at", "DATETIME(6) NULL");
         // Add the businessweekly source row in prod (data.sql only runs locally).
         ensureSource("businessweekly", "商業週刊",
                 "手動加入商業週刊的文章。", 3);

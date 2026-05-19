@@ -34,7 +34,6 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Pulls recent entries from arXiv's Atom feed for the source's enabled topics.
@@ -77,6 +76,21 @@ public class ArxivSyncService implements SourceSyncService {
         return "arxiv";
     }
 
+    /**
+     * Default lookback applied to a topic that has never been synced before
+     * ({@code lastSyncedAt == null}). Past this window, the topic looks
+     * "fresh" and we'd be paying for arXiv queries against years of data
+     * that the user almost certainly doesn't care about on first run.
+     */
+    private static final Duration INITIAL_LOOKBACK = Duration.ofDays(7);
+
+    /**
+     * arXiv asks programmatic clients to pause ≥3s between requests; we make
+     * one query per enabled topic now, so 3s × N for N topics. Honour it
+     * with this sleep between iterations.
+     */
+    private static final long POLITE_SLEEP_MS = 3000;
+
     @Override
     @Transactional
     public SyncResult sync() {
@@ -93,17 +107,71 @@ public class ArxivSyncService implements SourceSyncService {
         }
 
         int max = settings.findById(1L).map(s -> s.getMaxResultsPerSync()).orElse(50);
-        String search = buildSearchExpr(activeTopics);
+        int perTopicMax = Math.min(200, Math.max(1, max));
+        Instant syncStart = Instant.now();
 
-        try {
-            List<Paper> parsed = fetchPage(search, 0, Math.min(200, Math.max(1, max)), src.getId());
-            int[] counts = upsertAll(parsed, src);
-            return new SyncResult(sourceCode(), parsed.size(), counts[0], counts[1], null);
-        } catch (Exception ex) {
-            log.warn("arXiv sync failed", ex);
-            return new SyncResult(sourceCode(), 0, 0, 0, ex.getClass().getSimpleName() + ": " + ex.getMessage());
+        int totalFetched = 0, totalInserted = 0, totalSkipped = 0;
+        StringBuilder errors = new StringBuilder();
+
+        // Per-topic incremental sync. Categories that haven't accumulated new
+        // arXiv submissions since lastSyncedAt yield a zero-result query and
+        // we skip straight past — no wasted work re-downloading rows we
+        // already have. Topics that ARE new always pull a bounded window
+        // (INITIAL_LOOKBACK) so the first sync after enabling a topic
+        // doesn't try to scan all of arXiv's history.
+        for (int i = 0; i < activeTopics.size(); i++) {
+            Topic topic = activeTopics.get(i);
+            Instant since = topic.getLastSyncedAt() != null
+                    ? topic.getLastSyncedAt()
+                    : syncStart.minus(INITIAL_LOOKBACK);
+
+            try {
+                String query = buildTopicRangeQuery(topic.getCode(), since, syncStart);
+                List<Paper> parsed = fetchPage(query, 0, perTopicMax, src.getId());
+                int[] counts = upsertAll(parsed, src);
+                totalFetched += parsed.size();
+                totalInserted += counts[0];
+                totalSkipped += counts[1];
+
+                // Advance the watermark even on a zero-result fetch — the
+                // empty window is the proof there's nothing new.
+                topic.setLastSyncedAt(syncStart);
+                topics.save(topic);
+                log.info("arXiv sync [{}]: fetched={} inserted={} skipped={} since={}",
+                        topic.getCode(), parsed.size(), counts[0], counts[1], since);
+            } catch (Exception ex) {
+                log.warn("arXiv sync [{}] failed: {}", topic.getCode(), ex.getMessage());
+                if (errors.length() > 0) errors.append("; ");
+                errors.append(topic.getCode()).append(":").append(ex.getClass().getSimpleName());
+            }
+
+            // Polite pause between topics, but only when there's another one
+            // coming — no need to sleep after the final query.
+            if (i < activeTopics.size() - 1 && sleep3sOrInterrupted()) {
+                if (errors.length() > 0) errors.append("; ");
+                errors.append("interrupted");
+                break;
+            }
         }
+
+        String err = errors.length() == 0 ? null : errors.toString();
+        return new SyncResult(sourceCode(), totalFetched, totalInserted, totalSkipped, err);
     }
+
+    /**
+     * Builds a single-topic + date-range query: {@code cat:cs.AI AND submittedDate:[YYYYMMDDhhmm TO YYYYMMDDhhmm]}.
+     * Brackets are URL-encoded because the JDK HttpClient URI parser rejects
+     * raw {@code [} / {@code ]}. Timestamps are in UTC to match arXiv's own.
+     */
+    private static String buildTopicRangeQuery(String topicCode, Instant since, Instant until) {
+        String start = ARXIV_TIMESTAMP.format(since.atOffset(ZoneOffset.UTC));
+        String end = ARXIV_TIMESTAMP.format(until.atOffset(ZoneOffset.UTC));
+        return "cat:" + topicCode
+                + "+AND+submittedDate:%5B" + start + "+TO+" + end + "%5D";
+    }
+
+    private static final DateTimeFormatter ARXIV_TIMESTAMP =
+            DateTimeFormatter.ofPattern("yyyyMMddHHmm");
 
     /**
      * Historical backfill — populates {@link MonthlyTopicCount} with the
@@ -254,12 +322,6 @@ public class ArxivSyncService implements SourceSyncService {
     }
 
     private static final DateTimeFormatter YYYYMMDD = DateTimeFormatter.ofPattern("yyyyMMdd");
-
-    private static String buildSearchExpr(List<Topic> activeTopics) {
-        return activeTopics.stream()
-                .map(t -> "cat:" + t.getCode())
-                .collect(Collectors.joining("+OR+"));
-    }
 
     /**
      * arXiv asks that programmatic clients identify themselves so requests can be

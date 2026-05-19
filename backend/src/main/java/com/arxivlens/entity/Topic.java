@@ -15,6 +15,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.Instant;
+
 @Entity
 @Table(
     name = "topics",
@@ -45,4 +47,15 @@ public class Topic {
 
     @Column(name = "is_enabled", nullable = false)
     private Boolean enabled = Boolean.TRUE;
+
+    /**
+     * Last time the arXiv sync successfully queried this topic. The next sync
+     * uses this as the lower bound of {@code submittedDate:[…]} so we only
+     * pull papers that arrived since — categories that haven't been touched
+     * (i.e. no new arXiv submissions) yield a tiny no-op response instead of
+     * the previous "always re-fetch the top N globally" behaviour. Null on a
+     * freshly enabled topic; the sync falls back to a default lookback window.
+     */
+    @Column(name = "last_synced_at")
+    private Instant lastSyncedAt;
 }
