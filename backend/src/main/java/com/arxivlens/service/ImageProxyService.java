@@ -44,7 +44,12 @@ public class ImageProxyService {
             "bwnet.com.tw",
             "businessweekly.com.tw",
             "hbrtaiwan.com",
-            "hbr.org"
+            "hbr.org",
+            // HBR Taiwan / 哈佛商業評論繁體中文版 is published by Commonwealth
+            // Group (天下雜誌); their inline article images live under
+            // imgs.cwgv.com.tw and similar cwgv.com.tw subdomains.
+            "cwgv.com.tw",
+            "cw.com.tw"
     );
 
     private static boolean hostAllowed(String host) {
