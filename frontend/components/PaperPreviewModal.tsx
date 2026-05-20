@@ -78,6 +78,11 @@ export default function PaperPreviewModal() {
     }
   }, [preview.open, paperId, locale, needsTranslation, fetchCached]);
 
+  // MUST stay above the early return below — calling a hook conditionally
+  // changes the hook count between renders and trips React error #300 on
+  // every open/close of the modal.
+  const sources = useSourcesStore((s) => s.items);
+
   if (!preview.open || !preview.paper) return null;
   const p = preview.paper;
   const authors = parseAuthors(p);
@@ -107,13 +112,11 @@ export default function PaperPreviewModal() {
 
   // arXiv papers always have a deterministic PDF URL the backend can fall
   // back to (e.g. when an older sync row has pdfUrl=null), so the Download
-  // button should still show for them.
-  const sources = useSourcesStore((s) => s.items);
+  // button should still show for them. sources is fetched above the early
+  // return; deriving arxivSourceId / isDownloadable here is just plain JS.
   const arxivSourceId = sources.find((s) => s.code === "arxiv")?.id ?? null;
-  const isDownloadable = preview.paper != null && (
-    Boolean(preview.paper.pdfUrl)
-    || (arxivSourceId != null && preview.paper.sourceId === arxivSourceId)
-  );
+  const isDownloadable = Boolean(p.pdfUrl)
+    || (arxivSourceId != null && p.sourceId === arxivSourceId);
 
   async function onDelete() {
     if (paperId == null) return;
