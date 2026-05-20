@@ -24,6 +24,16 @@ export default function FavoritesPage() {
   const sources = useSourcesStore((s) => s.items);
   const currentSource = findSourceById(sources, currentSourceId);
 
+  // arXiv papers always have a deterministic PDF URL the backend can fall
+  // back to even when paper.pdfUrl came back blank from an older sync, so
+  // treat any arXiv-sourced paper as downloadable from the frontend's POV.
+  const arxivSourceId = useMemo(
+    () => sources.find((s) => s.code === "arxiv")?.id ?? null,
+    [sources]
+  );
+  const isDownloadable = (sourceId: number, pdfUrl: string | null) =>
+    Boolean(pdfUrl) || (arxivSourceId != null && sourceId === arxivSourceId);
+
   const openPreview = useUiStore((s) => s.openPreview);
   const ask = useUiStore((s) => s.ask);
   const flash = useUiStore((s) => s.flash);
@@ -43,11 +53,14 @@ export default function FavoritesPage() {
 
   const cachedPaperIds = new Set(downloads.map((d) => d.paper.id));
 
-  // Only papers with a real PDF can be downloaded — HBR / manual articles have
-  // no pdfUrl, so we filter them out instead of firing failing requests.
+  // Only PDF-backed papers can be downloaded. HBR / manual / BW articles have
+  // no PDF source; arXiv papers always do (the backend reconstructs the URL
+  // when pdfUrl is missing from a stale DB row).
   const downloadable = useMemo(
-    () => items.filter((f) => f.paper.pdfUrl && !cachedPaperIds.has(f.paper.id)),
-    [items, cachedPaperIds]
+    () => items.filter(
+      (f) => isDownloadable(f.paper.sourceId, f.paper.pdfUrl) && !cachedPaperIds.has(f.paper.id)
+    ),
+    [items, cachedPaperIds, arxivSourceId]
   );
 
   async function handleDownloadAll() {
@@ -171,7 +184,7 @@ export default function FavoritesPage() {
                   >
                     {t("favorites.preview")}
                   </button>
-                  {f.paper.pdfUrl && cached && (
+                  {isDownloadable(f.paper.sourceId, f.paper.pdfUrl) && cached && (
                     <button
                       onClick={async () => {
                         try {
@@ -185,7 +198,7 @@ export default function FavoritesPage() {
                       {t("favorites.open_cached")}
                     </button>
                   )}
-                  {f.paper.pdfUrl && !cached && (
+                  {isDownloadable(f.paper.sourceId, f.paper.pdfUrl) && !cached && (
                     <button
                       onClick={async () => {
                         try {
@@ -200,7 +213,7 @@ export default function FavoritesPage() {
                       {t("favorites.download_pdf")}
                     </button>
                   )}
-                  {!f.paper.pdfUrl && f.paper.url && (
+                  {!isDownloadable(f.paper.sourceId, f.paper.pdfUrl) && f.paper.url && (
                     <a
                       href={f.paper.url}
                       target="_blank"

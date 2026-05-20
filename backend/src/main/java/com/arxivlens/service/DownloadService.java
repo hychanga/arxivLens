@@ -76,13 +76,21 @@ public class DownloadService {
     public DownloadView create(Long userId, CreateDownloadRequest req) {
         Paper p = papers.findById(req.paperId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Paper not found"));
-        if (p.getPdfUrl() == null || p.getPdfUrl().isBlank()) {
+        String pdfUrl = p.getPdfUrl();
+        if (pdfUrl == null || pdfUrl.isBlank()) {
+            // Some older synced rows in TiDB came back with pdfUrl null even
+            // though arXiv exposes a deterministic URL for every paper. Fall
+            // back to constructing it from the externalId so favorites of
+            // those rows aren't permanently un-downloadable.
+            pdfUrl = inferArxivPdfUrl(p);
+        }
+        if (pdfUrl == null || pdfUrl.isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST,
                     "This paper has no downloadable PDF. " +
                     "Demo seed papers ship without PDF links — run a sync to fetch real papers, " +
                     "or pick another paper from a source that exposes PDFs.");
         }
-        String url = normalizeArxivUrl(p.getPdfUrl());
+        String url = normalizeArxivUrl(pdfUrl);
 
         Optional<Download> existing = downloads.findByUserIdAndPaper_Id(userId, p.getId());
         if (existing.isPresent()) {
@@ -212,6 +220,22 @@ public class DownloadService {
             }
             return out.toByteArray();
         }
+    }
+
+    /**
+     * Reconstructs arXiv's deterministic PDF URL from a paper's external id.
+     * Modern arXiv ids look like {@code 2501.00001} (optionally suffixed with
+     * a version like {@code v2}); older ones use {@code <archive>/<7 digits>}
+     * (e.g. {@code cs/9501001}). Manual / Business-Weekly papers are rejected.
+     */
+    private static String inferArxivPdfUrl(Paper p) {
+        String ext = p == null ? null : p.getExternalId();
+        if (ext == null || ext.isBlank()) return null;
+        if (ext.startsWith("manual-") || ext.startsWith("bw-")) return null;
+        boolean modern = ext.matches("\\d{4}\\.\\d{4,5}(v\\d+)?");
+        boolean older = ext.matches("[a-z\\-]+/\\d{7}(v\\d+)?");
+        if (!modern && !older) return null;
+        return "https://arxiv.org/pdf/" + ext + ".pdf";
     }
 
     /**

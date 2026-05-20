@@ -115,14 +115,48 @@ public class SchemaBootstrap {
         addColumnIfMissing("users", "totp_secret", "VARCHAR(64) NULL");
         // Per-topic incremental sync watermark — see Topic.lastSyncedAt.
         addColumnIfMissing("topics", "last_synced_at", "DATETIME(6) NULL");
-        // Add the businessweekly source row in prod (data.sql only runs locally).
+        // Ensure the canonical source rows exist in prod (data.sql only runs
+        // locally). hbr is in here too because at least one prod DB lost the
+        // row at some point — re-create it idempotently on every boot so the
+        // TopBar entry points never disappear silently.
+        ensureSource("hbr", "Harvard Business Review",
+                "手動加入 HBR 文章。", 2);
         ensureSource("businessweekly", "商業週刊",
                 "手動加入商業週刊的文章。", 3);
+        // Re-enable canonical sources if they were toggled off — the user
+        // reported the TopBar entries vanished. Admins can still disable via
+        // the admin page; this only nudges rows back to enabled once on the
+        // next boot after the regression.
+        reEnableSourcesIfDisabled("hbr", "businessweekly");
         // One-shot cleanup: the earlier BW auto-scrape wrote rows with external_id
         // "bw-<section>-<id>" and broken titles. After switching BW to a manual
         // paste source, those rows are orphans — clear them. Idempotent: a no-op
         // once the legacy rows are gone, so safe to run on every startup.
         purgeLegacyBusinessWeeklyPapers();
+    }
+
+    /**
+     * Flips {@code is_enabled} back to 1 for the named sources if they're
+     * currently disabled. One-shot recovery for the case where a row exists
+     * but was toggled off (whether by accident or by an earlier code path).
+     * Admins can still disable from the admin page; this just guards against
+     * silent disappearance from the TopBar.
+     */
+    private void reEnableSourcesIfDisabled(String... codes) {
+        if (codes.length == 0) return;
+        try {
+            String placeholders = String.join(",", java.util.Collections.nCopies(codes.length, "?"));
+            int n = jdbc.update(
+                    "UPDATE data_sources SET is_enabled = 1 "
+                            + "WHERE is_enabled = 0 AND code IN (" + placeholders + ")",
+                    (Object[]) codes);
+            if (n > 0) {
+                log.info("Schema bootstrap: re-enabled {} canonical source row(s): {}",
+                        n, String.join(", ", codes));
+            }
+        } catch (Exception e) {
+            log.warn("Schema bootstrap: re-enable canonical sources failed — {}", e.getMessage());
+        }
     }
 
     /**

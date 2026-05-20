@@ -6,6 +6,7 @@ import { useDownloadsStore } from "@/store/downloads";
 import { useFavoritesStore } from "@/store/favorites";
 import { useLocaleStore } from "@/store/locale";
 import { usePapersStore } from "@/store/papers";
+import { useSourcesStore } from "@/store/sources";
 import { useTranslationsStore } from "@/store/translations";
 import { parseAuthors, fmtDate } from "@/lib/format";
 import { openCachedPdf } from "@/lib/pdf";
@@ -103,6 +104,16 @@ export default function PaperPreviewModal() {
   // upstream source to recover them from. Sync-fetched papers don't expose
   // this button; nuking those is the admin-page "Clear paper cache" affordance.
   const isManual = preview.paper?.externalId?.startsWith("manual-") ?? false;
+
+  // arXiv papers always have a deterministic PDF URL the backend can fall
+  // back to (e.g. when an older sync row has pdfUrl=null), so the Download
+  // button should still show for them.
+  const sources = useSourcesStore((s) => s.items);
+  const arxivSourceId = sources.find((s) => s.code === "arxiv")?.id ?? null;
+  const isDownloadable = preview.paper != null && (
+    Boolean(preview.paper.pdfUrl)
+    || (arxivSourceId != null && preview.paper.sourceId === arxivSourceId)
+  );
 
   async function onDelete() {
     if (paperId == null) return;
@@ -239,7 +250,7 @@ export default function PaperPreviewModal() {
               >
                 {t("modal.open_cached_pdf")}
               </button>
-            ) : p.pdfUrl ? (
+            ) : isDownloadable ? (
               <button
                 onClick={async () => {
                   try {
