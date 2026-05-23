@@ -147,12 +147,32 @@ public final class HtmlExtractor {
 
     private static String pickTitle(String html) {
         String og = firstGroup(OG_TITLE_PC, html);
-        if (og != null) return decodeEntities(og).trim();
+        if (og != null) return stripPublisherChrome(decodeEntities(og).trim());
         og = firstGroup(OG_TITLE_CP, html);
-        if (og != null) return decodeEntities(og).trim();
+        if (og != null) return stripPublisherChrome(decodeEntities(og).trim());
         String t = firstGroup(TITLE_TAG, html);
-        return t == null ? "" : decodeEntities(t).replaceAll("\\s+", " ").trim();
+        if (t == null) return "";
+        return stripPublisherChrome(decodeEntities(t).replaceAll("\\s+", " ").trim());
     }
+
+    /**
+     * Strips publisher chrome that hangs off the end of og:title / &lt;title&gt;.
+     * HBR Taiwan ships titles like {@code "實際標題｜哈佛商業評論，與世界一流管理接軌"}
+     * across both meta tags; the suffix is noise once we've identified the
+     * source and just makes the card label long. Matches a separator
+     * (pipe / dash / em-dash / en-dash) followed by {@code 哈佛商業評論} and
+     * anything trailing, anchored to end of line. Returns the original
+     * string if the strip would leave a blank title.
+     */
+    static String stripPublisherChrome(String title) {
+        if (title == null) return null;
+        String cleaned = PUBLISHER_CHROME_SUFFIX.matcher(title).replaceFirst("");
+        String trimmed = cleaned.trim();
+        return trimmed.isEmpty() ? title : trimmed;
+    }
+
+    private static final Pattern PUBLISHER_CHROME_SUFFIX = Pattern.compile(
+            "\\s*[|｜\\-—–]\\s*哈佛商業評論[^\\r\\n]*$");
 
     private static Instant pickPublishedAt(String html) {
         for (Pattern p : PUBLISHED_PATTERNS) {

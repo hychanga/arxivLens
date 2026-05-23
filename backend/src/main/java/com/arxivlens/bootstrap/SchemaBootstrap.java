@@ -133,6 +133,45 @@ public class SchemaBootstrap {
         // paste source, those rows are orphans — clear them. Idempotent: a no-op
         // once the legacy rows are gone, so safe to run on every startup.
         purgeLegacyBusinessWeeklyPapers();
+        // Retroactively trim "｜哈佛商業評論…" suffix from HBR titles saved
+        // before HtmlExtractor learned to strip publisher chrome. Idempotent:
+        // once cleaned, the LIKE filter matches nothing and the loop runs
+        // zero iterations.
+        stripHbrPublisherChromeFromExistingTitles();
+    }
+
+    private static final java.util.regex.Pattern HBR_TITLE_CHROME = java.util.regex.Pattern.compile(
+            "\\s*[|｜\\-—–]\\s*哈佛商業評論[^\\r\\n]*$");
+
+    /**
+     * For every saved HBR paper whose title still carries the
+     * {@code ｜哈佛商業評論…} suffix, rewrite the title to the trimmed form.
+     * Mirrors {@link com.arxivlens.service.HtmlExtractor#stripPublisherChrome}
+     * but standalone so we don't need to load that class on the bootstrap
+     * thread.
+     */
+    private void stripHbrPublisherChromeFromExistingTitles() {
+        try {
+            java.util.List<java.util.Map<String, Object>> rows = jdbc.queryForList(
+                    "SELECT id, title FROM papers "
+                            + "WHERE external_id LIKE 'hbr-%' AND title LIKE '%哈佛商業評論%'");
+            int updated = 0;
+            for (java.util.Map<String, Object> row : rows) {
+                Object idObj = row.get("id");
+                Object titleObj = row.get("title");
+                if (!(idObj instanceof Number) || !(titleObj instanceof String title)) continue;
+                String cleaned = HBR_TITLE_CHROME.matcher(title).replaceFirst("").trim();
+                if (cleaned.isEmpty() || cleaned.equals(title)) continue;
+                jdbc.update("UPDATE papers SET title = ? WHERE id = ?",
+                        cleaned, ((Number) idObj).longValue());
+                updated++;
+            }
+            if (updated > 0) {
+                log.info("Schema bootstrap: stripped HBR title chrome from {} row(s)", updated);
+            }
+        } catch (Exception e) {
+            log.warn("Schema bootstrap: HBR title cleanup failed — {}", e.getMessage());
+        }
     }
 
     /**
