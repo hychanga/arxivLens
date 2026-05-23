@@ -138,6 +138,10 @@ public class SchemaBootstrap {
         // once cleaned, the LIKE filter matches nothing and the loop runs
         // zero iterations.
         stripHbrPublisherChromeFromExistingTitles();
+        // Retroactively downscale cached_images that were stored before
+        // ingest-time resize was wired in. Idempotent: rows already within
+        // the thumbnail budget are passed through untouched.
+        resizeOversizedCachedImages();
     }
 
     private static final java.util.regex.Pattern HBR_TITLE_CHROME = java.util.regex.Pattern.compile(
@@ -171,6 +175,46 @@ public class SchemaBootstrap {
             }
         } catch (Exception e) {
             log.warn("Schema bootstrap: HBR title cleanup failed — {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Walks {@code cached_images} once and re-encodes any row whose bytes
+     * shrink under the thumbnail size cap. Idempotent — rows already at or
+     * below the budget are returned unchanged by
+     * {@link com.arxivlens.service.ImageProxyService#resizeForThumbnail}, so
+     * the UPDATE only fires for the legacy oversize rows.
+     */
+    private void resizeOversizedCachedImages() {
+        try {
+            java.util.List<Long> ids = jdbc.queryForList(
+                    "SELECT id FROM cached_images", Long.class);
+            int resized = 0;
+            int failed = 0;
+            for (Long id : ids) {
+                try {
+                    java.util.Map<String, Object> row = jdbc.queryForMap(
+                            "SELECT data, content_type FROM cached_images WHERE id = ?", id);
+                    byte[] data = (byte[]) row.get("data");
+                    String ct = (String) row.get("content_type");
+                    if (data == null) continue;
+                    byte[] thumb = com.arxivlens.service.ImageProxyService
+                            .resizeForThumbnail(data, ct);
+                    if (thumb != data && thumb.length < data.length) {
+                        jdbc.update("UPDATE cached_images SET data = ? WHERE id = ?",
+                                thumb, id);
+                        resized++;
+                    }
+                } catch (Exception inner) {
+                    failed++;
+                }
+            }
+            if (resized > 0 || failed > 0) {
+                log.info("Schema bootstrap: cached_images resize sweep — resized={} failed={} total={}",
+                        resized, failed, ids.size());
+            }
+        } catch (Exception e) {
+            log.warn("Schema bootstrap: cached_images resize sweep failed — {}", e.getMessage());
         }
     }
 

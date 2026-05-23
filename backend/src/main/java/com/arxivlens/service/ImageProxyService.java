@@ -9,6 +9,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.imageio.ImageIO;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -92,19 +99,97 @@ public class ImageProxyService {
         }
 
         Fetched fresh = fetchUpstream(normalized);
+        // Downscale before persisting — publisher images often ship at
+        // 1200×675 etc. which is wasteful for our cards. We never display
+        // larger than the modal width, so shrinking at ingest time saves
+        // both TiDB storage and bandwidth on every subsequent serve.
+        byte[] thumb = resizeForThumbnail(fresh.bytes(), fresh.contentType());
+        Fetched served = thumb == fresh.bytes() ? fresh : new Fetched(thumb, fresh.contentType());
         try {
             CachedImage row = new CachedImage();
             row.setUrlHash(hash);
             row.setSourceUrl(normalized.length() > 2048 ? normalized.substring(0, 2048) : normalized);
-            row.setContentType(fresh.contentType());
-            row.setData(fresh.bytes());
+            row.setContentType(served.contentType());
+            row.setData(served.bytes());
             cache.save(row);
         } catch (Exception e) {
             // Cache failure is non-fatal — we still got the bytes; just serve
             // without caching this time and try again next request.
             log.warn("Image proxy: could not persist cache for {} — {}", normalized, e.getMessage());
         }
-        return fresh;
+        return served;
+    }
+
+    /** Max width / height for the cached thumbnail. Aspect ratio preserved. */
+    public static final int THUMB_MAX_WIDTH = 400;
+    public static final int THUMB_MAX_HEIGHT = 225;
+
+    /**
+     * Scales {@code data} so it fits inside {@link #THUMB_MAX_WIDTH} ×
+     * {@link #THUMB_MAX_HEIGHT}, preserving aspect ratio. Returns the input
+     * bytes verbatim when the image is already small enough, when its format
+     * isn't decodable by ImageIO (WebP without the optional plugin, for
+     * example), or when the encoded result is somehow larger than the input.
+     */
+    public static byte[] resizeForThumbnail(byte[] data, String contentType) {
+        if (data == null || data.length == 0) return data;
+        try {
+            BufferedImage src = ImageIO.read(new ByteArrayInputStream(data));
+            if (src == null) return data; // unrecognised format → pass through.
+            int w = src.getWidth();
+            int h = src.getHeight();
+            double scale = Math.min(
+                    (double) THUMB_MAX_WIDTH / w,
+                    (double) THUMB_MAX_HEIGHT / h);
+            if (scale >= 1.0) return data; // already within budget.
+            int newW = Math.max(1, (int) Math.round(w * scale));
+            int newH = Math.max(1, (int) Math.round(h * scale));
+            // Preserve alpha for PNG so transparent backgrounds stay
+            // transparent; JPEG never has alpha so RGB is enough.
+            boolean keepAlpha = src.getColorModel().hasAlpha()
+                    && !isJpegContentType(contentType);
+            BufferedImage dst = new BufferedImage(newW, newH,
+                    keepAlpha ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = dst.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                    RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setRenderingHint(RenderingHints.KEY_RENDERING,
+                    RenderingHints.VALUE_RENDER_QUALITY);
+            // White matte under any transparent area when re-encoding to JPEG
+            // so we don't get a black background.
+            if (!keepAlpha && src.getColorModel().hasAlpha()) {
+                g.setColor(Color.WHITE);
+                g.fillRect(0, 0, newW, newH);
+            }
+            g.drawImage(src, 0, 0, newW, newH, null);
+            g.dispose();
+            String formatName = imageIoFormat(contentType);
+            ByteArrayOutputStream out = new ByteArrayOutputStream(8 * 1024);
+            boolean wrote = ImageIO.write(dst, formatName, out);
+            if (!wrote) return data;
+            byte[] resized = out.toByteArray();
+            // If the re-encoded version is somehow larger than the original
+            // (rare — happens when the source is already heavily compressed
+            // and our re-encode is more conservative), keep the original to
+            // honor the "smaller cache" goal.
+            return resized.length < data.length ? resized : data;
+        } catch (Exception e) {
+            return data;
+        }
+    }
+
+    private static String imageIoFormat(String contentType) {
+        if (contentType == null) return "jpeg";
+        String low = contentType.toLowerCase();
+        if (low.contains("png")) return "png";
+        if (low.contains("gif")) return "gif";
+        return "jpeg";
+    }
+
+    private static boolean isJpegContentType(String ct) {
+        if (ct == null) return false;
+        String low = ct.toLowerCase();
+        return low.contains("jpeg") || low.contains("jpg");
     }
 
     private Fetched fetchUpstream(String url) {
