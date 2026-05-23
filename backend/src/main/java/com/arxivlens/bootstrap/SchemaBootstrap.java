@@ -120,7 +120,7 @@ public class SchemaBootstrap {
         // row at some point — re-create it idempotently on every boot so the
         // TopBar entry points never disappear silently.
         ensureSource("hbr", "Harvard Business Review",
-                "手動加入 HBR 文章。", 2);
+                "每日自動同步 hbrtaiwan.com 首頁文章，亦可手動補充。", 2);
         ensureSource("businessweekly", "商業週刊",
                 "手動加入商業週刊的文章。", 3);
         // Re-enable canonical sources if they were toggled off — the user

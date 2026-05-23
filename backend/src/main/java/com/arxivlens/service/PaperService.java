@@ -77,15 +77,13 @@ public class PaperService {
     }
 
     /**
-     * Sources whose feed bypasses the {@code publishedAt >= since} filter. HBR
-     * articles are added by hand (paste / URL import) and we don't want
-     * historical articles to silently disappear just because the user's days
-     * filter is set short. Business Weekly used to be in this set, but the new
-     * {@link com.arxivlens.frontend} 2-year / 10-year quick filters give users a
-     * way to expand the window themselves, so BW now goes through the regular
-     * date filter like arXiv.
+     * Sources whose feed bypasses the {@code publishedAt >= since} filter.
+     * Empty by default — HBR used to bypass while it was paste-only, but it
+     * now auto-syncs the home page and writes real publishedAt values, so
+     * the date filter behaves correctly. Users who want to see older
+     * imports can pick the 2yr / "All" quick filter in the sidebar.
      */
-    private static final java.util.Set<String> MANUAL_SOURCES = java.util.Set.of("hbr");
+    private static final java.util.Set<String> MANUAL_SOURCES = java.util.Set.of();
 
     /**
      * Hard ceiling on a numeric "last N days" filter. {@code days = 0} (and
