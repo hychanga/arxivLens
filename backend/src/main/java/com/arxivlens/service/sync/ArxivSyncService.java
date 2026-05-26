@@ -162,15 +162,25 @@ public class ArxivSyncService implements SourceSyncService {
     }
 
     /**
-     * Builds a single-topic + date-range query: {@code cat:cs.AI AND submittedDate:[YYYYMMDDhhmm TO YYYYMMDDhhmm]}.
-     * Brackets are URL-encoded because the JDK HttpClient URI parser rejects
-     * raw {@code [} / {@code ]}. Timestamps are in UTC to match arXiv's own.
+     * Builds a single-topic + date-range query keyed off {@code lastUpdatedDate}
+     * rather than {@code submittedDate}.
+     *
+     * <p>Why lastUpdatedDate: arXiv only "announces" new submissions on a
+     * lagging schedule (Sun-Thu evenings US Eastern, with a 14:00 ET cutoff).
+     * In practice papers freshly submitted today don't appear in the API for
+     * 1-3 days, so a {@code submittedDate}-keyed sync that runs right after
+     * lunch can come back with nothing newer than last Friday's submissions
+     * — even though those papers were technically inserted into the index
+     * over the weekend. Filtering on {@code lastUpdatedDate} catches every
+     * paper whose record changed in the window (new submissions, revisions,
+     * cross-list re-announcements), which is the freshness signal users
+     * actually care about.
      */
     private static String buildTopicRangeQuery(String topicCode, Instant since, Instant until) {
         String start = ARXIV_TIMESTAMP.format(since.atOffset(ZoneOffset.UTC));
         String end = ARXIV_TIMESTAMP.format(until.atOffset(ZoneOffset.UTC));
         return "cat:" + topicCode
-                + "+AND+submittedDate:%5B" + start + "+TO+" + end + "%5D";
+                + "+AND+lastUpdatedDate:%5B" + start + "+TO+" + end + "%5D";
     }
 
     private static final DateTimeFormatter ARXIV_TIMESTAMP =
@@ -334,11 +344,15 @@ public class ArxivSyncService implements SourceSyncService {
     private static final String USER_AGENT = "arxivLens/0.1 (+https://arxivlens.vercel.app)";
 
     private List<Paper> fetchPage(String search, int start, int maxResults, Long sourceId) throws Exception {
+        // Sort by lastUpdatedDate so freshly revised / re-announced papers
+        // rise to the top — matches the query keyed off lastUpdatedDate in
+        // buildTopicRangeQuery so the windowed result actually lands in
+        // most-recently-active order.
         String url = "https://export.arxiv.org/api/query"
                 + "?search_query=" + search
                 + "&start=" + start
                 + "&max_results=" + maxResults
-                + "&sortBy=submittedDate&sortOrder=descending";
+                + "&sortBy=lastUpdatedDate&sortOrder=descending";
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("User-Agent", USER_AGENT)
@@ -397,7 +411,14 @@ public class ArxivSyncService implements SourceSyncService {
             String externalId = trimArxivId(id);
             String title = collapse(textNS(e, ATOM_NS, "title"));
             String summary = collapse(textNS(e, ATOM_NS, "summary"));
-            String pubStr = textNS(e, ATOM_NS, "published");
+            // Prefer <updated> over <published> so revisions / re-announces
+            // surface as fresh activity in Latest. arXiv's <published> is the
+            // original submission instant and never changes; <updated> is the
+            // most recent activity. Fall back to <published>, then to "now",
+            // if <updated> isn't present.
+            String updatedStr = textNS(e, ATOM_NS, "updated");
+            String publishedStr = textNS(e, ATOM_NS, "published");
+            String pubStr = (updatedStr != null && !updatedStr.isBlank()) ? updatedStr : publishedStr;
             Instant published = (pubStr == null || pubStr.isBlank())
                     ? Instant.now()
                     : OffsetDateTime.parse(pubStr).toInstant();
