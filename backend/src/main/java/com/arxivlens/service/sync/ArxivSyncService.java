@@ -107,7 +107,10 @@ public class ArxivSyncService implements SourceSyncService {
         }
 
         int max = settings.findById(1L).map(s -> s.getMaxResultsPerSync()).orElse(50);
-        int perTopicMax = Math.min(200, Math.max(1, max));
+        // arXiv API accepts up to 2000 results per single query — that's the
+        // hard ceiling. The user-configured max_results_per_sync sits below
+        // that and the Math.max guard rejects pathological 0 / negative.
+        int perTopicMax = Math.min(2000, Math.max(1, max));
         Instant syncStart = Instant.now();
 
         int totalFetched = 0, totalInserted = 0, totalSkipped = 0;
