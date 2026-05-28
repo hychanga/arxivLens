@@ -32,6 +32,8 @@ export default function AdminPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
+  const [resyncing, setResyncing] = useState(false);
+  const [resyncDays, setResyncDays] = useState(30);
   const [newTopic, setNewTopic] = useState({ code: "", name: "" });
 
   useEffect(() => {
@@ -113,6 +115,26 @@ export default function AdminPage() {
       flash(e instanceof Error ? e.message : "Backfill failed", "error");
     } finally {
       setBackfilling(false);
+    }
+  }
+
+  async function deepResync() {
+    const days = Math.max(1, Math.min(365, Math.round(resyncDays)));
+    setResyncing(true);
+    try {
+      const r = await apiFetch<SyncResult>(`/admin/arxiv/resync?days=${days}`, {
+        method: "POST",
+      });
+      flash(
+        r.error
+          ? `arXiv resync error: ${r.error}`
+          : `arXiv resync (${days}d) — fetched ${r.fetched}, inserted ${r.inserted}, skipped ${r.skipped}`,
+        r.error ? "error" : "success"
+      );
+    } catch (e) {
+      flash(e instanceof Error ? e.message : "Resync failed", "error");
+    } finally {
+      setResyncing(false);
     }
   }
 
@@ -240,7 +262,7 @@ export default function AdminPage() {
           <h2 className="font-semibold">{t("admin.data_sources")}</h2>
           <button
             onClick={backfillAll}
-            disabled={backfilling || syncing}
+            disabled={backfilling || syncing || resyncing}
             title={t("admin.backfill_hint")}
             className="rounded bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 text-white px-3 py-1 text-xs hover:opacity-90 disabled:opacity-50"
           >
@@ -248,6 +270,30 @@ export default function AdminPage() {
           </button>
         </div>
         <p className="text-xs text-zinc-500">{t("admin.backfill_hint")}</p>
+
+        {/* arXiv deep resync — paginate through a wider window and back-fill
+            any rows the previous capped runs missed. */}
+        <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-zinc-100 dark:border-zinc-800">
+          <span className="text-xs text-zinc-500">{t("admin.resync_days_label")}</span>
+          <input
+            type="number"
+            min={1}
+            max={365}
+            value={resyncDays}
+            onChange={(e) => setResyncDays(Number(e.target.value))}
+            disabled={resyncing || syncing || backfilling}
+            className="w-20 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-2 py-1 text-xs disabled:opacity-50"
+          />
+          <button
+            onClick={deepResync}
+            disabled={resyncing || syncing || backfilling}
+            title={t("admin.resync_hint")}
+            className="rounded bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 text-xs disabled:opacity-50"
+          >
+            {resyncing ? t("admin.resyncing") : t("admin.resync_button")}
+          </button>
+        </div>
+        <p className="text-xs text-zinc-500">{t("admin.resync_hint")}</p>
         <ul className="space-y-1">
           {sources.map((s) => (
             <li key={s.id} className="flex items-center gap-3 text-sm py-1">

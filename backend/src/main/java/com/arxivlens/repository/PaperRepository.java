@@ -15,6 +15,19 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
 
     Optional<Paper> findBySourceIdAndExternalId(Long sourceId, String externalId);
 
+    /**
+     * Bulk existence check used by the arXiv sync pagination loop. Returns
+     * the subset of {@code externalIds} that are already present for the
+     * given source so the caller can filter the parse result before
+     * persisting, instead of issuing one {@code findBySourceIdAndExternalId}
+     * lookup per paper.
+     */
+    @Query("SELECT p.externalId FROM Paper p "
+            + "WHERE p.sourceId = :sourceId AND p.externalId IN :externalIds")
+    List<String> findExistingExternalIds(
+            @Param("sourceId") Long sourceId,
+            @Param("externalIds") List<String> externalIds);
+
     long countBySourceId(Long sourceId);
 
     /**

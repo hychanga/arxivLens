@@ -418,19 +418,32 @@ public class ArxivSyncService implements SourceSyncService {
         }
     }
 
-    /** Upserts within the current transaction. Returns [inserted, skipped]. */
+    /**
+     * Insert every paper in {@code parsed} that isn't already on file.
+     * Existence is decided by a single batched IN-query per page, NOT a
+     * find-per-paper round-trip — at 1000-paper pages and 4000-paper
+     * windows that's the difference between ~4 queries and ~4000.
+     */
     private int[] upsertAll(List<Paper> parsed, Source src) {
-        int inserted = 0, skipped = 0;
-        for (Paper p : parsed) {
-            if (papers.findBySourceIdAndExternalId(p.getSourceId(), p.getExternalId()).isPresent()) {
-                skipped++;
-            } else {
-                p.setSource(src);
-                papers.save(p);
-                inserted++;
-            }
+        if (parsed.isEmpty()) return new int[]{0, 0};
+        java.util.Set<String> existing = new java.util.HashSet<>();
+        // Chunk the IN-list so we never blow past MySQL / TiDB's
+        // max_allowed_packet ceiling even on a full 2000-row page.
+        final int CHUNK = 500;
+        java.util.List<String> ids = new java.util.ArrayList<>(parsed.size());
+        for (Paper p : parsed) ids.add(p.getExternalId());
+        for (int i = 0; i < ids.size(); i += CHUNK) {
+            java.util.List<String> slice = ids.subList(i, Math.min(i + CHUNK, ids.size()));
+            existing.addAll(papers.findExistingExternalIds(src.getId(), slice));
         }
-        return new int[]{inserted, skipped};
+        java.util.List<Paper> toInsert = new java.util.ArrayList<>(parsed.size() - existing.size());
+        for (Paper p : parsed) {
+            if (existing.contains(p.getExternalId())) continue;
+            p.setSource(src);
+            toInsert.add(p);
+        }
+        if (!toInsert.isEmpty()) papers.saveAll(toInsert);
+        return new int[]{toInsert.size(), existing.size()};
     }
 
     private List<Paper> parseAtom(byte[] xml, Long sourceId) throws Exception {
