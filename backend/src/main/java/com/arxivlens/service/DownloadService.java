@@ -151,19 +151,47 @@ public class DownloadService {
 
     /**
      * Loads a previously-cached PDF for the {@code paperId} owned by {@code userId} so the
-     * controller can stream it inline back to the browser. Returns 404/410 with a clear
-     * message rather than a generic 500 when the row exists but the blob is gone.
+     * controller can stream it inline back to the browser. If the row exists but the BLOB
+     * is gone (e.g. legacy filesystem-cached rows after a Render restart), transparently
+     * refetches from the paper's PDF URL so the user doesn't have to manually re-download.
+     * Only 410s when there's genuinely no source to refetch from.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public CachedPdf serveCachedFile(Long userId, Long paperId) {
         Download d = downloads.findByUserIdAndPaper_Id(userId, paperId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND,
                         "Not in your library — download the paper first."));
-        DownloadBlob b = blobs.findById(d.getId())
-                .orElseThrow(() -> new ApiException(HttpStatus.GONE,
-                        "PDF is no longer cached. Click \"Download PDF\" on this paper in Favorites to refetch."));
+        DownloadBlob b = blobs.findById(d.getId()).orElse(null);
+        if (b == null) {
+            b = refetchAndCache(d);
+        }
         String filename = safeFilename(d.getPaper().getExternalId()) + ".pdf";
         return new CachedPdf(new ByteArrayResource(b.getPdfData()), filename);
+    }
+
+    /**
+     * Repopulates a missing BLOB for an existing download row. Mirrors the self-healing in
+     * {@link #create} but runs on the read path so just opening a cached PDF re-hydrates it.
+     */
+    private DownloadBlob refetchAndCache(Download d) {
+        Paper p = d.getPaper();
+        String pdfUrl = p.getPdfUrl();
+        if (pdfUrl == null || pdfUrl.isBlank()) {
+            pdfUrl = inferArxivPdfUrl(p);
+        }
+        if (pdfUrl == null || pdfUrl.isBlank()) {
+            throw new ApiException(HttpStatus.GONE,
+                    "PDF is no longer cached and this paper has no re-downloadable source.");
+        }
+        byte[] bytes = fetchOrThrow(normalizeArxivUrl(pdfUrl));
+        saveBlob(d.getId(), bytes);
+        d.setSizeMb(bytes.length / (1024.0 * 1024.0));
+        downloads.save(d);
+        log.info("Re-hydrated missing PDF blob for downloadId={} paperId={}", d.getId(), p.getId());
+        DownloadBlob b = new DownloadBlob();
+        b.setDownloadId(d.getId());
+        b.setPdfData(bytes);
+        return b;
     }
 
     private void saveBlob(Long downloadId, byte[] bytes) {
