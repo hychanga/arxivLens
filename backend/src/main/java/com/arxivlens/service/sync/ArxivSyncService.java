@@ -85,6 +85,14 @@ public class ArxivSyncService implements SourceSyncService {
     private static final Duration INITIAL_LOOKBACK = Duration.ofDays(7);
 
     /**
+     * Safety ceiling on how many pages we'll pull for a single topic before
+     * bailing — guards against runaway loops if arXiv ever returns infinite
+     * results. {@code 50 × perTopicMax(2000) = 100k} papers per topic per
+     * sync, which is more than every cs.* category accumulates in a year.
+     */
+    private static final int MAX_PAGES_PER_TOPIC = 50;
+
+    /**
      * arXiv asks programmatic clients to pause ≥3s between requests; we make
      * one query per enabled topic now, so 3s × N for N topics. Honour it
      * with this sleep between iterations.
@@ -130,18 +138,39 @@ public class ArxivSyncService implements SourceSyncService {
 
             try {
                 String query = buildTopicRangeQuery(topic.getCode(), since, syncStart);
-                List<Paper> parsed = fetchPage(query, 0, perTopicMax, src.getId());
-                int[] counts = upsertAll(parsed, src);
-                totalFetched += parsed.size();
-                totalInserted += counts[0];
-                totalSkipped += counts[1];
+                // Paginate until either the upstream returns less than a
+                // full page (we've drained the window) or we hit the
+                // per-topic page safety cap. Without this, a deep window
+                // that contains more than perTopicMax papers had its tail
+                // silently dropped — and once lastSyncedAt advanced past
+                // syncStart, those dropped rows were unreachable on every
+                // subsequent run, leaving permanent holes in the data set.
+                int topicFetched = 0, topicInserted = 0, topicSkipped = 0;
+                int pageStart = 0;
+                int pagesPulled = 0;
+                while (pagesPulled < MAX_PAGES_PER_TOPIC) {
+                    List<Paper> page = fetchPage(query, pageStart, perTopicMax, src.getId());
+                    pagesPulled++;
+                    int got = page.size();
+                    int[] counts = upsertAll(page, src);
+                    topicFetched += got;
+                    topicInserted += counts[0];
+                    topicSkipped += counts[1];
+                    if (got < perTopicMax) break; // last page — window drained.
+                    pageStart += perTopicMax;
+                    // Polite pause between successive pages of the same topic.
+                    // Smaller than the inter-topic sleep because we're still
+                    // inside one logical query for arXiv's rate-limit purposes.
+                    if (sleep1sOrInterrupted()) break;
+                }
+                totalFetched += topicFetched;
+                totalInserted += topicInserted;
+                totalSkipped += topicSkipped;
 
-                // Advance the watermark even on a zero-result fetch — the
-                // empty window is the proof there's nothing new.
                 topic.setLastSyncedAt(syncStart);
                 topics.save(topic);
-                log.info("arXiv sync [{}]: fetched={} inserted={} skipped={} since={}",
-                        topic.getCode(), parsed.size(), counts[0], counts[1], since);
+                log.info("arXiv sync [{}]: pages={} fetched={} inserted={} skipped={} since={}",
+                        topic.getCode(), pagesPulled, topicFetched, topicInserted, topicSkipped, since);
             } catch (Exception ex) {
                 log.warn("arXiv sync [{}] failed: {}", topic.getCode(), ex.getMessage());
                 if (errors.length() > 0) errors.append("; ");
@@ -273,8 +302,17 @@ public class ArxivSyncService implements SourceSyncService {
     }
 
     private boolean sleep3sOrInterrupted() {
+        return sleepOrInterrupted(3000);
+    }
+
+    /** Shorter pause used between pages of the same topic query. */
+    private boolean sleep1sOrInterrupted() {
+        return sleepOrInterrupted(1000);
+    }
+
+    private boolean sleepOrInterrupted(long millis) {
         try {
-            Thread.sleep(3000);
+            Thread.sleep(millis);
             return false;
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();

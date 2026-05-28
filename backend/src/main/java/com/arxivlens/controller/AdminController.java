@@ -3,10 +3,19 @@ package com.arxivlens.controller;
 import com.arxivlens.dto.AdminDtos.SettingsView;
 import com.arxivlens.dto.AdminDtos.UpdateSettingsRequest;
 import com.arxivlens.dto.SyncDtos.SyncResult;
+import com.arxivlens.entity.Source;
+import com.arxivlens.entity.Topic;
 import com.arxivlens.repository.PaperRepository;
+import com.arxivlens.repository.SourceRepository;
+import com.arxivlens.repository.TopicRepository;
 import com.arxivlens.service.PaperService;
 import com.arxivlens.service.SettingService;
 import com.arxivlens.service.sync.SyncDispatcher;
+import com.arxivlens.web.ApiException;
+import org.springframework.http.HttpStatus;
+
+import java.time.Duration;
+import java.time.Instant;
 import jakarta.validation.Valid;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -29,15 +38,21 @@ public class AdminController {
     private final PaperRepository papers;
     private final PaperService paperService;
     private final SyncDispatcher dispatcher;
+    private final SourceRepository sources;
+    private final TopicRepository topics;
 
     public AdminController(SettingService settings,
                            PaperRepository papers,
                            PaperService paperService,
-                           SyncDispatcher dispatcher) {
+                           SyncDispatcher dispatcher,
+                           SourceRepository sources,
+                           TopicRepository topics) {
         this.settings = settings;
         this.papers = papers;
         this.paperService = paperService;
         this.dispatcher = dispatcher;
+        this.sources = sources;
+        this.topics = topics;
     }
 
     @GetMapping("/settings")
@@ -88,5 +103,31 @@ public class AdminController {
     @DeleteMapping("/manual-articles")
     public Map<String, Integer> clearManualArticles() {
         return Map.of("removed", paperService.deleteAllManual());
+    }
+
+    /**
+     * Resets {@code Topic.lastSyncedAt} for every enabled arXiv topic to
+     * {@code now - days}, then runs a full sync. Use this when the regular
+     * incremental sync has overshot — e.g. the per-topic page cap dropped
+     * the tail of a 4000-paper window and the watermark advanced past those
+     * never-fetched rows. The sync that follows paginates through the
+     * widened window and back-fills the gap.
+     *
+     * <p>{@code days} is clamped to [1, 365] so an admin can't accidentally
+     * ask arXiv for "everything since 1991".
+     */
+    @PostMapping("/arxiv/resync")
+    @Transactional
+    public SyncResult resyncArxiv(@RequestParam(name = "days", defaultValue = "30") int days) {
+        int safeDays = Math.max(1, Math.min(365, days));
+        Source arxiv = sources.findByCode("arxiv")
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "arXiv source not found"));
+        Instant resetTo = Instant.now().minus(Duration.ofDays(safeDays));
+        List<Topic> active = topics.findBySourceIdAndEnabledTrue(arxiv.getId());
+        for (Topic t : active) {
+            t.setLastSyncedAt(resetTo);
+            topics.save(t);
+        }
+        return dispatcher.syncByCode("arxiv");
     }
 }
