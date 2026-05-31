@@ -122,15 +122,13 @@ export default function AdminPage() {
     const days = Math.max(1, Math.min(365, Math.round(resyncDays)));
     setResyncing(true);
     try {
-      const r = await apiFetch<SyncResult>(`/admin/arxiv/resync?days=${days}`, {
-        method: "POST",
-      });
-      flash(
-        r.error
-          ? `arXiv resync error: ${r.error}`
-          : `arXiv resync (${days}d) — fetched ${r.fetched}, inserted ${r.inserted}, skipped ${r.skipped}`,
-        r.error ? "error" : "success"
+      // The backend runs the resync in the background (it can take minutes) and
+      // returns immediately, so we just acknowledge the kickoff here.
+      await apiFetch<{ status: string; days: number; topics: number }>(
+        `/admin/arxiv/resync?days=${days}`,
+        { method: "POST" }
       );
+      flash(t("admin.resync_started", { days }), "success");
     } catch (e) {
       flash(e instanceof Error ? e.message : "Resync failed", "error");
     } finally {

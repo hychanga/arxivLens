@@ -63,6 +63,15 @@ public class ArxivSyncService implements SourceSyncService {
      */
     private final TransactionTemplate tx;
 
+    /**
+     * Guards against two syncs running at once (e.g. the 6h scheduled sync
+     * firing while an admin resync is in flight). Concurrent syncs both upsert
+     * papers and advance topic watermarks and reliably deadlock each other on
+     * TiDB, so the second caller bails fast instead.
+     */
+    private final java.util.concurrent.atomic.AtomicBoolean running =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .followRedirects(HttpClient.Redirect.NORMAL)
@@ -112,6 +121,18 @@ public class ArxivSyncService implements SourceSyncService {
 
     @Override
     public SyncResult sync() {
+        if (!running.compareAndSet(false, true)) {
+            log.info("arXiv sync skipped — another sync is already in progress");
+            return new SyncResult(sourceCode(), 0, 0, 0, "sync already in progress");
+        }
+        try {
+            return doSync();
+        } finally {
+            running.set(false);
+        }
+    }
+
+    private SyncResult doSync() {
         Source src = sources.findByCode(sourceCode()).orElse(null);
         if (src == null) {
             return new SyncResult(sourceCode(), 0, 0, 0, "source not found");

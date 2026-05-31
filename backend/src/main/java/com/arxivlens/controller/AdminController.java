@@ -12,10 +12,14 @@ import com.arxivlens.service.PaperService;
 import com.arxivlens.service.SettingService;
 import com.arxivlens.service.sync.SyncDispatcher;
 import com.arxivlens.web.ApiException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import jakarta.validation.Valid;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -40,6 +44,15 @@ public class AdminController {
     private final SyncDispatcher dispatcher;
     private final SourceRepository sources;
     private final TopicRepository topics;
+
+    private static final Logger log = LoggerFactory.getLogger(AdminController.class);
+
+    /** Single background worker so a deep resync runs off the request thread (and never two at once). */
+    private final ExecutorService resyncExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "arxiv-resync");
+        t.setDaemon(true);
+        return t;
+    });
 
     public AdminController(SettingService settings,
                            PaperRepository papers,
@@ -115,10 +128,17 @@ public class AdminController {
      *
      * <p>{@code days} is clamped to [1, 365] so an admin can't accidentally
      * ask arXiv for "everything since 1991".
+     *
+     * <p>Runs the pull on a background thread and returns immediately: a deep
+     * resync can take several minutes (arXiv asks for >=3s between pages), which
+     * outlives any proxy/browser request timeout. Running it off the request
+     * thread also keeps it clear of the open-in-view session, so each page
+     * commits in its own clean transaction. Watch the server logs (or the feed)
+     * for completion. NOT {@code @Transactional} — the watermark resets and each
+     * page commit are independent units, so one failure doesn't roll back the rest.
      */
     @PostMapping("/arxiv/resync")
-    @Transactional
-    public SyncResult resyncArxiv(@RequestParam(name = "days", defaultValue = "30") int days) {
+    public Map<String, Object> resyncArxiv(@RequestParam(name = "days", defaultValue = "30") int days) {
         int safeDays = Math.max(1, Math.min(365, days));
         Source arxiv = sources.findByCode("arxiv")
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "arXiv source not found"));
@@ -128,6 +148,15 @@ public class AdminController {
             t.setLastSyncedAt(resetTo);
             topics.save(t);
         }
-        return dispatcher.syncByCode("arxiv");
+        resyncExecutor.submit(() -> {
+            SyncResult r = dispatcher.syncByCode("arxiv");
+            log.info("admin resync ({}d) done: fetched={} inserted={} skipped={} error={}",
+                    safeDays, r.fetched(), r.inserted(), r.skipped(), r.error());
+        });
+        return Map.of(
+                "status", "started",
+                "days", safeDays,
+                "topics", active.size(),
+                "message", "Resync started in the background; check the feed in a few minutes.");
     }
 }
