@@ -149,7 +149,7 @@ public class ArxivSyncService implements SourceSyncService {
                 int pageStart = 0;
                 int pagesPulled = 0;
                 while (pagesPulled < MAX_PAGES_PER_TOPIC) {
-                    List<Paper> page = fetchPage(query, pageStart, perTopicMax, src.getId());
+                    List<Paper> page = fetchPageWithRetry(query, pageStart, perTopicMax, src.getId());
                     pagesPulled++;
                     int got = page.size();
                     int[] counts = upsertAll(page, src);
@@ -158,10 +158,11 @@ public class ArxivSyncService implements SourceSyncService {
                     topicSkipped += counts[1];
                     if (got < perTopicMax) break; // last page — window drained.
                     pageStart += perTopicMax;
-                    // Polite pause between successive pages of the same topic.
-                    // Smaller than the inter-topic sleep because we're still
-                    // inside one logical query for arXiv's rate-limit purposes.
-                    if (sleep1sOrInterrupted()) break;
+                    // arXiv asks for >=3s between programmatic requests. A deep
+                    // resync paginates many pages per topic, so honour that pause
+                    // between pages too — not just between topics — or the shared
+                    // Render egress IP trips arXiv's 429 limiter mid-topic.
+                    if (sleep3sOrInterrupted()) break;
                 }
                 totalFetched += topicFetched;
                 totalInserted += topicInserted;
@@ -305,11 +306,6 @@ public class ArxivSyncService implements SourceSyncService {
         return sleepOrInterrupted(3000);
     }
 
-    /** Shorter pause used between pages of the same topic query. */
-    private boolean sleep1sOrInterrupted() {
-        return sleepOrInterrupted(1000);
-    }
-
     private boolean sleepOrInterrupted(long millis) {
         try {
             Thread.sleep(millis);
@@ -381,6 +377,35 @@ public class ArxivSyncService implements SourceSyncService {
      */
     private static final String USER_AGENT = "arxivLens/0.1 (+https://arxivlens.vercel.app)";
 
+    /**
+     * Wraps {@link #fetchPage} with bounded retry + backoff for the two transient
+     * failures a deep resync provokes on arXiv's shared-IP rate limiter: HTTP 429
+     * and request timeouts. Without this, a single 429 on any page propagates to
+     * the per-topic catch and abandons the whole topic — losing every page after
+     * it. Retries a few times with growing backoff, then gives up and lets the
+     * caller record the topic as failed.
+     */
+    private List<Paper> fetchPageWithRetry(String search, int start, int maxResults, Long sourceId) throws Exception {
+        final int MAX_ATTEMPTS = 4;
+        long backoffMs = 5000;
+        int attempt = 0;
+        while (true) {
+            try {
+                return fetchPage(search, start, maxResults, sourceId);
+            } catch (Exception ex) {
+                attempt++;
+                boolean rateLimited = ex instanceof IllegalStateException
+                        && ex.getMessage() != null && ex.getMessage().contains("429");
+                boolean timedOut = ex instanceof java.net.http.HttpTimeoutException;
+                if ((!rateLimited && !timedOut) || attempt >= MAX_ATTEMPTS) throw ex;
+                log.info("arXiv fetch retry {}/{} (start={}) after '{}' — backing off {}ms",
+                        attempt, MAX_ATTEMPTS - 1, start, ex.getMessage(), backoffMs);
+                if (sleepOrInterrupted(backoffMs)) throw ex;
+                backoffMs = Math.min(backoffMs * 2, 30000);
+            }
+        }
+    }
+
     private List<Paper> fetchPage(String search, int start, int maxResults, Long sourceId) throws Exception {
         // Sort by lastUpdatedDate so freshly revised / re-announced papers
         // rise to the top — matches the query keyed off lastUpdatedDate in
@@ -394,7 +419,10 @@ public class ArxivSyncService implements SourceSyncService {
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("User-Agent", USER_AGENT)
-                .timeout(Duration.ofSeconds(20))
+                // A full page (up to max_results) over a deep window is a large
+                // XML payload that arXiv serves slowly when it's throttling, so
+                // allow more headroom than the lightweight count query.
+                .timeout(Duration.ofSeconds(40))
                 .GET()
                 .build();
         HttpResponse<byte[]> res = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
