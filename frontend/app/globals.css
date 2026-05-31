@@ -28,3 +28,11 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* While a document is being fetched (toggled from lib/pdf.ts), force a loading
+ * cursor across the whole viewport. The `* !important` is needed to override
+ * element-level cursors (buttons, links) so the busy state is unmistakable. */
+html.cursor-busy,
+html.cursor-busy * {
+  cursor: progress !important;
+}

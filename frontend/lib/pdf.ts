@@ -12,29 +12,40 @@ import { BASE_URL, getStoredToken, HttpError } from "./api";
  * The blob URL is revoked after a minute, which is plenty of time for the new
  * tab to finish loading; revoking earlier would race with the tab and leave a
  * blank page.
+ *
+ * Fetching the full blob can take a noticeable moment (cold backend / large
+ * file), so we show a loading cursor across the viewport for the duration and
+ * restore it once the bytes are in hand (or on error). See the `.cursor-busy`
+ * rule in app/globals.css.
  */
 export async function openCachedPdf(paperId: number): Promise<void> {
-  const token = getStoredToken();
-  const res = await fetch(`${BASE_URL}/downloads/${paperId}/file`, {
-    method: "GET",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
+  const root = typeof document !== "undefined" ? document.documentElement : null;
+  root?.classList.add("cursor-busy");
+  try {
+    const token = getStoredToken();
+    const res = await fetch(`${BASE_URL}/downloads/${paperId}/file`, {
+      method: "GET",
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
 
-  if (!res.ok) {
-    let message = `HTTP ${res.status}`;
-    try {
-      const err = await res.json();
-      if (err?.message) message = String(err.message);
-    } catch {
-      // body wasn't JSON — keep the HTTP status as the message
+    if (!res.ok) {
+      let message = `HTTP ${res.status}`;
+      try {
+        const err = await res.json();
+        if (err?.message) message = String(err.message);
+      } catch {
+        // body wasn't JSON — keep the HTTP status as the message
+      }
+      throw new HttpError(res.status, message, null);
     }
-    throw new HttpError(res.status, message, null);
-  }
 
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  // popup blockers can swallow this — we accept that and let the user re-click;
-  // the alternative (anchor.click()) loses the noopener guarantee.
-  window.open(url, "_blank", "noopener,noreferrer");
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    // popup blockers can swallow this — we accept that and let the user re-click;
+    // the alternative (anchor.click()) loses the noopener guarantee.
+    window.open(url, "_blank", "noopener,noreferrer");
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } finally {
+    root?.classList.remove("cursor-busy");
+  }
 }
