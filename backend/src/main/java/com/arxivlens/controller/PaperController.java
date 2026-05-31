@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -66,6 +67,18 @@ public class PaperController {
         return translations.findCached(id, locale)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    /**
+     * Batch cache lookup for many papers in one locale — the feed asks for all
+     * visible cards at once instead of one request per card, which would exhaust
+     * the small connection pool. Returns only the papers that already have a
+     * cached translation; missing ones are simply absent from the list.
+     */
+    @GetMapping("/translations")
+    public List<PaperTranslation> getTranslations(@RequestParam(name = "ids") List<Long> ids,
+                                                  @RequestParam(name = "locale") String locale) {
+        return translations.findCachedBatch(ids, locale);
     }
 
     /** Generates (or returns cached) translation for the paper. Idempotent per (paper, locale). */

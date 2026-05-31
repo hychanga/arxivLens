@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -50,6 +51,22 @@ public class PaperTranslationService {
     public Optional<PaperTranslation> findCached(Long paperId, String locale) {
         validateLocale(locale);
         return translations.findByPaperIdAndLocale(paperId, locale);
+    }
+
+    /**
+     * Batch lookup of cached translations for many papers in one locale. The feed
+     * probes translations for every visible card; doing that as one query (one
+     * transaction, one pooled connection) instead of N parallel requests avoids
+     * exhausting the small Hikari pool on the free tier. Only papers that already
+     * have a cached translation appear in the result.
+     */
+    @Transactional(readOnly = true)
+    public List<PaperTranslation> findCachedBatch(List<Long> paperIds, String locale) {
+        validateLocale(locale);
+        if (paperIds == null || paperIds.isEmpty()) {
+            return List.of();
+        }
+        return translations.findByPaperIdInAndLocale(paperIds, locale);
     }
 
     /** Returns cached translation if present, otherwise calls the AI provider, persists, returns. */
