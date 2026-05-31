@@ -29,7 +29,11 @@ public record AppProperties(
     public record Ai(String provider, Gemini gemini) {
         public record Gemini(String apiKey, String model) {}
     }
-    public record Scheduler(String arxivCron, String hbrCron, boolean enabled) {}
+    /**
+     * @param notifyEmail address to email a summary to after each scheduled
+     *                    arXiv sync completes. Blank → no notification sent.
+     */
+    public record Scheduler(String arxivCron, String hbrCron, boolean enabled, String notifyEmail) {}
 
     /**
      * OAuth identity-provider settings. A blank {@code clientId} for a provider

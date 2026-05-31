@@ -105,3 +105,11 @@ services:
       # Toggle scheduler if you want to throttle outbound API usage on cold starts.
       - key: SCHEDULER_ENABLED
         value: "true"
+
+      # Email a summary after each scheduled arXiv sync (every 6h). Blank
+      # disables it. Delivery needs RESEND_API_KEY set above; with Resend's dev
+      # sandbox the recipient must be the email you registered with Resend.
+      # Defaults to the maintainer's address in application.properties; override
+      # here to change or disable.
+      - key: SYNC_NOTIFY_EMAIL
+        sync: false
