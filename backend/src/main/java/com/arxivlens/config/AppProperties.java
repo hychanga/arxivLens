@@ -32,12 +32,22 @@ public record AppProperties(
     public record Scheduler(String arxivCron, String hbrCron, boolean enabled) {}
 
     /**
-     * OAuth identity-provider settings. {@code google.clientId} blank → real
-     * Google sign-in is disabled and {@code AuthService.oauthLogin} falls back
-     * to the mock demo-user behavior (useful for offline dev / CI).
+     * OAuth identity-provider settings. A blank {@code clientId} for a provider
+     * means real sign-in for that provider is disabled and
+     * {@code AuthService.oauthLogin} falls back to the mock demo-user behavior
+     * (useful for offline dev / CI).
      */
-    public record Oauth(Google google) {
+    public record Oauth(Google google, Apple apple) {
         public record Google(String clientId) {}
+
+        /**
+         * Sign in with Apple settings. {@code clientId} is the Services ID
+         * registered in the Apple Developer portal — it is both the web flow's
+         * {@code client_id} and the ID token's {@code aud}. Comma-separate to
+         * allow more than one audience (e.g. a web Services ID plus a native
+         * app bundle ID).
+         */
+        public record Apple(String clientId) {}
     }
 
     /**

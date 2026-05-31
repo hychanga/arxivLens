@@ -10,6 +10,7 @@ import { HttpError } from "@/lib/api";
 import LocaleSelector from "@/components/LocaleSelector";
 import ThemeToggle from "@/components/ThemeToggle";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
+import AppleSignInButton from "@/components/AppleSignInButton";
 
 type Mode = "login" | "register" | "forgot";
 
@@ -283,14 +284,23 @@ function LoginPageInner() {
               {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID && (
                 <GoogleSignInButton onError={setOauthError} />
               )}
-              <OAuthButton
-                provider="apple"
-                label={t("login.continue_apple")}
-                busyLabel={t("login.connecting")}
-                busy={oauthBusy === "apple"}
-                disabled={oauthBusy !== null || pending}
-                onClick={() => startOAuth("apple")}
-              />
+              {/*
+                Real Sign in with Apple when the Services ID + redirect URI are
+                baked into the build; otherwise the mock button so the demo and
+                offline dev keep a working Apple cell (mirrors the Google path).
+              */}
+              {process.env.NEXT_PUBLIC_APPLE_CLIENT_ID && process.env.NEXT_PUBLIC_APPLE_REDIRECT_URI ? (
+                <AppleSignInButton onError={setOauthError} />
+              ) : (
+                <OAuthButton
+                  provider="apple"
+                  label={t("login.continue_apple")}
+                  busyLabel={t("login.connecting")}
+                  busy={oauthBusy === "apple"}
+                  disabled={oauthBusy !== null || pending}
+                  onClick={() => startOAuth("apple")}
+                />
+              )}
             </div>
 
             {oauthError && (

@@ -98,6 +98,8 @@ All runtime config is environment-variable driven. The complete list:
 | `SPRING_DATASOURCE_PASSWORD`  | DB password                                                             | `arxivlens`             |
 | `JWT_SECRET`                  | HMAC key for issuing JWTs (≥ 32 bytes)                                  | dev placeholder         |
 | `GEMINI_API_KEY`              | <https://aistudio.google.com/apikey>; leave blank to disable AI         | empty                   |
+| `GOOGLE_CLIENT_ID`            | Google Identity Services Web client ID; blank → mock Google sign-in     | empty                   |
+| `APPLE_CLIENT_ID`             | Apple Services ID (token `aud`); blank → mock Apple sign-in. See DEPLOY.md | empty                 |
 | `GEMINI_MODEL`                | Model name                                                             | `gemini-2.5-flash`      |
 | `APP_CORS_ALLOWED_ORIGINS`    | Comma-separated allow-list for browser origins                          | `http://localhost:3000` |
 | `SCHEDULER_ENABLED`           | Auto-sync arXiv/HBR every 6 h                                           | `true` (prod) / `false` (dev) |

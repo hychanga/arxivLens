@@ -100,8 +100,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const res = await apiFetch<AuthResponse>(`/auth/oauth/${provider}`, {
         method: "POST",
-        // For Google: idToken is required (backend rejects otherwise).
-        // For Apple (still mocked): body is ignored, sent only to keep the request well-formed.
+        // idToken is the provider's identity token (Google Identity Services or
+        // Apple's JS SDK). When a provider isn't configured server-side the
+        // backend ignores an empty token and falls back to a mock demo user.
         body: idToken ? { idToken } : { idToken: "" },
         auth: false,
       });

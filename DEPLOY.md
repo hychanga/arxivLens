@@ -131,6 +131,38 @@ git push -u origin main
    Comma-separated, no trailing slash, no whitespace. Save → Render redeploys (~1 min).
    *(For a single wildcard that covers every preview URL, switch SecurityConfig from `setAllowedOrigins` to `setAllowedOriginPatterns`.)*
 
+### Optional — enable Sign in with Apple
+
+Apple sign-in stays a mock demo user until you wire a real **Services ID**. It
+needs a paid **Apple Developer Program** membership ($99/yr).
+
+1. **developer.apple.com → Certificates, IDs & Profiles → Identifiers**:
+   - Create an **App ID** with the *Sign in with Apple* capability enabled.
+   - Create a **Services ID** (e.g. `com.arxivlens.web`) — this is your
+     `client_id` / token `aud`. Enable *Sign in with Apple* on it, link it to
+     the App ID, and under **Website URLs** add:
+     - **Domain:** `arxivlens.vercel.app`
+     - **Return URL:** `https://arxivlens.vercel.app/login`
+   - Apple requires domain verification: download the association file it gives
+     you and serve it at `https://arxivlens.vercel.app/.well-known/apple-developer-domain-association.txt`
+     (drop it in `frontend/public/.well-known/`), then click **Verify**.
+2. **Render → arxivlens-backend → Environment:**
+   ```
+   APPLE_CLIENT_ID=com.arxivlens.web
+   ```
+   (Comma-separate if you also support a native app bundle ID.) Save → redeploy.
+3. **Vercel → arxivlens → Environment Variables** (Production + Preview + Development):
+   ```
+   NEXT_PUBLIC_APPLE_CLIENT_ID=com.arxivlens.web
+   NEXT_PUBLIC_APPLE_REDIRECT_URI=https://arxivlens.vercel.app/login
+   ```
+   These are baked in at build time, so trigger a Vercel redeploy after setting them.
+
+The login screen swaps the mock Apple button for the real popup flow once both
+`NEXT_PUBLIC_APPLE_*` vars are present; the backend verifies the returned token
+against Apple's JWKS and matches/creates the user. The `redirectURI` must be
+HTTPS and exactly match a registered Return URL even in popup mode.
+
 ## 4. First-time bootstrap
 
 1. Open `https://arxivlens.vercel.app`.

@@ -7,6 +7,7 @@ import com.arxivlens.dto.AuthDtos.TwoFactorEnableRequest;
 import com.arxivlens.dto.AuthDtos.TwoFactorSetupResponse;
 import com.arxivlens.dto.AuthDtos.TwoFactorStatusResponse;
 import com.arxivlens.dto.AuthDtos.UserSummary;
+import com.arxivlens.config.AppProperties;
 import com.arxivlens.entity.User;
 import com.arxivlens.repository.UserRepository;
 import com.arxivlens.security.JwtService;
@@ -15,6 +16,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
 
 @Service
 public class AuthService {
@@ -30,15 +35,20 @@ public class AuthService {
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final GoogleTokenVerifier googleVerifier;
+    private final AppleTokenVerifier appleVerifier;
     private final TotpService totp;
+    private final AppProperties props;
 
     public AuthService(UserRepository users, PasswordEncoder encoder, JwtService jwt,
-                       GoogleTokenVerifier googleVerifier, TotpService totp) {
+                       GoogleTokenVerifier googleVerifier, AppleTokenVerifier appleVerifier,
+                       TotpService totp, AppProperties props) {
         this.users = users;
         this.encoder = encoder;
         this.jwt = jwt;
         this.googleVerifier = googleVerifier;
+        this.appleVerifier = appleVerifier;
         this.totp = totp;
+        this.props = props;
     }
 
     @Transactional
@@ -132,10 +142,13 @@ public class AuthService {
      *       claim becomes our stable {@code oauth_subject} (so the same Google
      *       account always maps to the same local user row, even if the email
      *       changes).</li>
-     *   <li><b>apple</b>: still a mock — a deterministic demo user is upserted
-     *       and a JWT issued. Wiring real Apple Sign In requires a paid Apple
-     *       Developer account ($99/yr) plus JWS-signed client secrets, which is
-     *       out of scope for the hobby tier.</li>
+     *   <li><b>apple</b>: real flow when {@code app.oauth.apple.client-id} is
+     *       configured. The frontend obtains an {@code id_token} via Apple's JS
+     *       SDK and passes it in {@code idToken}; {@link AppleTokenVerifier}
+     *       verifies the JWS signature against Apple's JWKS and the issuer /
+     *       audience. The verified {@code sub} becomes our stable
+     *       {@code oauth_subject}. When the Services ID isn't configured we fall
+     *       back to a deterministic demo user (offline dev / CI / live demo).</li>
      * </ul>
      */
     @Transactional
@@ -143,7 +156,7 @@ public class AuthService {
         String key = provider == null ? "" : provider.toLowerCase();
         return switch (key) {
             case "google" -> googleOauthLogin(idToken);
-            case "apple" -> mockOauthLogin("apple");
+            case "apple" -> appleOauthLogin(idToken);
             default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Unsupported OAuth provider: " + provider);
         };
     }
@@ -172,6 +185,60 @@ public class AuthService {
         }
         users.save(u);
         return buildResponse(u);
+    }
+
+    private AuthResponse appleOauthLogin(String idToken) {
+        List<String> audiences = appleAudiences();
+        if (audiences.isEmpty()) {
+            // Services ID not configured — keep the login screen functional with a
+            // deterministic demo user, mirroring the Google offline-dev fallback.
+            return mockOauthLogin("apple");
+        }
+
+        AppleTokenVerifier.VerifiedClaims claims = appleVerifier.verify(idToken, audiences);
+        String email = claims.email();
+        // Match by (provider, subject) first — the only identifier guaranteed stable
+        // across email changes / private-relay rotation. Fall back to email so an
+        // account that first registered with email/password attaches to the same row.
+        User u = users.findByOauthProviderAndOauthSubject("apple", claims.subject())
+                .or(() -> email == null || email.isBlank() ? Optional.<User>empty() : users.findByEmail(email))
+                .orElseGet(User::new);
+
+        boolean isNew = u.getId() == null;
+        if (email != null && !email.isBlank()) {
+            u.setEmail(email);
+        } else if (u.getEmail() == null) {
+            // Apple only returns the email when the user grants the scope; synthesize a
+            // stable placeholder so the NOT NULL email column is satisfied for new users.
+            u.setEmail(claims.subject() + "@privaterelay.appleid.com");
+        }
+        u.setOauthProvider("apple");
+        u.setOauthSubject(claims.subject());
+        if (u.getDisplayName() == null || u.getDisplayName().isBlank()) {
+            // Apple doesn't put the name in the ID token (only in the first
+            // authorization's form post), so fall back to the email.
+            u.setDisplayName(u.getEmail());
+        }
+        if (isNew) {
+            u.setRole("USER");
+        }
+        users.save(u);
+        return buildResponse(u);
+    }
+
+    /** Configured Apple Services ID(s) — comma-separated → allowed {@code aud} values. */
+    private List<String> appleAudiences() {
+        if (props.oauth() == null || props.oauth().apple() == null) {
+            return List.of();
+        }
+        String raw = props.oauth().apple().clientId();
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(raw.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .toList();
     }
 
     private AuthResponse mockOauthLogin(String key) {

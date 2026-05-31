@@ -60,10 +60,11 @@ public final class AuthDtos {
     ) {}
 
     /**
-     * Body for {@code POST /api/auth/oauth/{provider}}.
-     * For {@code provider=google}: {@code idToken} is the JWT minted by Google
-     * Identity Services on the frontend. For {@code provider=apple} (still a
-     * mock in this codebase): the field can be omitted.
+     * Body for {@code POST /api/auth/oauth/{provider}}. {@code idToken} is the
+     * identity token the frontend obtained from the provider — minted by Google
+     * Identity Services for {@code provider=google}, or by Apple's JS SDK for
+     * {@code provider=apple}. It may be omitted only when the provider isn't
+     * configured server-side and the backend falls back to a mock demo user.
      */
     public record OAuthLoginRequest(String idToken) {}
 }
