@@ -13,7 +13,8 @@ import com.arxivlens.repository.TopicRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -53,6 +54,14 @@ public class ArxivSyncService implements SourceSyncService {
     private final PaperRepository papers;
     private final SettingRepository settings;
     private final MonthlyTopicCountRepository monthlyCounts;
+    /**
+     * Programmatic transactions so each page-upsert / watermark-save is its own
+     * short transaction instead of one giant {@code @Transactional} spanning the
+     * whole multi-topic, multi-minute sync. That giant transaction (a) held locks
+     * on thousands of rows for minutes → deadlocks with any concurrent writer, and
+     * (b) meant one topic's failure rolled back every other topic's work.
+     */
+    private final TransactionTemplate tx;
 
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -63,12 +72,14 @@ public class ArxivSyncService implements SourceSyncService {
                             TopicRepository topics,
                             PaperRepository papers,
                             SettingRepository settings,
-                            MonthlyTopicCountRepository monthlyCounts) {
+                            MonthlyTopicCountRepository monthlyCounts,
+                            PlatformTransactionManager txManager) {
         this.sources = sources;
         this.topics = topics;
         this.papers = papers;
         this.settings = settings;
         this.monthlyCounts = monthlyCounts;
+        this.tx = new TransactionTemplate(txManager);
     }
 
     @Override
@@ -100,7 +111,6 @@ public class ArxivSyncService implements SourceSyncService {
     private static final long POLITE_SLEEP_MS = 3000;
 
     @Override
-    @Transactional
     public SyncResult sync() {
         Source src = sources.findByCode(sourceCode()).orElse(null);
         if (src == null) {
@@ -152,7 +162,10 @@ public class ArxivSyncService implements SourceSyncService {
                     List<Paper> page = fetchPageWithRetry(query, pageStart, perTopicMax, src.getId());
                     pagesPulled++;
                     int got = page.size();
-                    int[] counts = upsertAll(page, src);
+                    // Persist each page in its own short transaction (with deadlock
+                    // retry) so it commits independently — the fetch above ran with
+                    // no DB connection held.
+                    int[] counts = persistPage(page, src);
                     topicFetched += got;
                     topicInserted += counts[0];
                     topicSkipped += counts[1];
@@ -168,8 +181,7 @@ public class ArxivSyncService implements SourceSyncService {
                 totalInserted += topicInserted;
                 totalSkipped += topicSkipped;
 
-                topic.setLastSyncedAt(syncStart);
-                topics.save(topic);
+                saveTopicWatermark(topic, syncStart);
                 log.info("arXiv sync [{}]: pages={} fetched={} inserted={} skipped={} since={}",
                         topic.getCode(), pagesPulled, topicFetched, topicInserted, topicSkipped, since);
             } catch (Exception ex) {
@@ -444,6 +456,53 @@ public class ArxivSyncService implements SourceSyncService {
         if (code / 100 != 2) {
             throw new IllegalStateException("HTTP " + code);
         }
+    }
+
+    /** Persist one page in its own transaction, retrying on a DB deadlock. */
+    private int[] persistPage(List<Paper> page, Source src) {
+        return runWithDeadlockRetry(() -> tx.execute(status -> upsertAll(page, src)));
+    }
+
+    /** Advance a topic's incremental watermark in its own transaction. */
+    private void saveTopicWatermark(Topic topic, Instant syncStart) {
+        runWithDeadlockRetry(() -> tx.execute(status -> {
+            topic.setLastSyncedAt(syncStart);
+            topics.save(topic);
+            return null;
+        }));
+    }
+
+    /**
+     * Retry a unit of DB work a few times when it fails with a deadlock
+     * (MySQL/TiDB error 1213 / SQLState 40001) — these are transient and the
+     * engine explicitly asks the loser to "restart the transaction". Any other
+     * failure propagates immediately to the per-topic handler.
+     */
+    private <T> T runWithDeadlockRetry(java.util.function.Supplier<T> action) {
+        int attempt = 0;
+        while (true) {
+            try {
+                return action.get();
+            } catch (RuntimeException ex) {
+                attempt++;
+                if (!isDeadlock(ex) || attempt >= 4) throw ex;
+                log.info("DB deadlock — retry {} after backoff: {}", attempt, ex.getMessage());
+                if (sleepOrInterrupted(500L * attempt)) throw ex;
+            }
+        }
+    }
+
+    private static boolean isDeadlock(Throwable ex) {
+        for (Throwable t = ex; t != null; t = t.getCause()) {
+            if (t instanceof java.sql.SQLException se
+                    && ("40001".equals(se.getSQLState()) || se.getErrorCode() == 1213)) {
+                return true;
+            }
+            String m = t.getMessage();
+            if (m != null && (m.contains("Deadlock") || m.contains("40001"))) return true;
+            if (t.getCause() == t) break; // guard against self-referential cause chains
+        }
+        return false;
     }
 
     /**
