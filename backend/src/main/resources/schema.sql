@@ -78,6 +78,7 @@ CREATE TABLE papers (
     pdf_url       VARCHAR(512),
     page_count    INT,
     topic_code    VARCHAR(64),
+    categories    VARCHAR(512),
     published_at  DATETIME      NOT NULL,
     fetched_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_papers_source_external (source_id, external_id),

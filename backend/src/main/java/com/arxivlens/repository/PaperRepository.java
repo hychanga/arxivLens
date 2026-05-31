@@ -8,12 +8,20 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 public interface PaperRepository extends JpaRepository<Paper, Long> {
 
     Optional<Paper> findBySourceIdAndExternalId(Long sourceId, String externalId);
+
+    /**
+     * Existence-and-fetch variant of {@link #findExistingExternalIds} that returns
+     * the managed entities, so the sync loop can both decide what to insert and
+     * backfill the {@code categories} column on rows it already has.
+     */
+    List<Paper> findBySourceIdAndExternalIdIn(Long sourceId, Collection<String> externalIds);
 
     /**
      * Bulk existence check used by the arXiv sync pagination loop. Returns
@@ -49,7 +57,9 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
             SELECT p FROM Paper p
             WHERE p.sourceId = :sourceId
               AND p.publishedAt >= :since
-              AND (:topicCode IS NULL OR p.topicCode = :topicCode)
+              AND (:topicCode IS NULL
+                   OR p.topicCode = :topicCode
+                   OR p.categories LIKE CONCAT('%,', :topicCode, ',%'))
             """)
     Page<Paper> findFeed(
             @Param("sourceId") Long sourceId,

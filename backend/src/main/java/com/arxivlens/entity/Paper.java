@@ -80,6 +80,20 @@ public class Paper {
     @Column(name = "topic_code", length = 64)
     private String topicCode;
 
+    /**
+     * Every arXiv category the paper is tagged with (primary + cross-lists),
+     * stored comma-delimited with leading/trailing commas as match delimiters —
+     * e.g. {@code ,cs.LG,cs.AI,stat.ML,}. {@code topicCode} keeps just the
+     * primary for display/grouping; this field lets the feed match a paper that
+     * cross-lists into a topic without being primarily filed there (arXiv's
+     * {@code cat:} search behaves the same way). Null for rows synced before
+     * this column existed and for manual/HBR papers; the feed falls back to
+     * {@code topicCode} in that case.
+     */
+    @JsonIgnore
+    @Column(name = "categories", length = 512)
+    private String categories;
+
     @Column(name = "published_at", nullable = false)
     private Instant publishedAt;
 

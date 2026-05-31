@@ -419,14 +419,16 @@ public class ArxivSyncService implements SourceSyncService {
     }
 
     /**
-     * Insert every paper in {@code parsed} that isn't already on file.
-     * Existence is decided by a single batched IN-query per page, NOT a
-     * find-per-paper round-trip — at 1000-paper pages and 4000-paper
-     * windows that's the difference between ~4 queries and ~4000.
+     * Insert every paper in {@code parsed} that isn't already on file, and
+     * backfill the {@code categories} column on rows we already have (so a deep
+     * resync fills in cross-list data for the historical backlog). Existence is
+     * decided by a single batched IN-query per page, NOT a find-per-paper
+     * round-trip — at 1000-paper pages and 4000-paper windows that's the
+     * difference between ~4 queries and ~4000.
      */
     private int[] upsertAll(List<Paper> parsed, Source src) {
         if (parsed.isEmpty()) return new int[]{0, 0};
-        java.util.Set<String> existing = new java.util.HashSet<>();
+        java.util.Map<String, Paper> existing = new java.util.HashMap<>();
         // Chunk the IN-list so we never blow past MySQL / TiDB's
         // max_allowed_packet ceiling even on a full 2000-row page.
         final int CHUNK = 500;
@@ -434,15 +436,28 @@ public class ArxivSyncService implements SourceSyncService {
         for (Paper p : parsed) ids.add(p.getExternalId());
         for (int i = 0; i < ids.size(); i += CHUNK) {
             java.util.List<String> slice = ids.subList(i, Math.min(i + CHUNK, ids.size()));
-            existing.addAll(papers.findExistingExternalIds(src.getId(), slice));
+            for (Paper e : papers.findBySourceIdAndExternalIdIn(src.getId(), slice)) {
+                existing.put(e.getExternalId(), e);
+            }
         }
-        java.util.List<Paper> toInsert = new java.util.ArrayList<>(parsed.size() - existing.size());
+        java.util.List<Paper> toInsert = new java.util.ArrayList<>();
+        java.util.List<Paper> toUpdate = new java.util.ArrayList<>();
         for (Paper p : parsed) {
-            if (existing.contains(p.getExternalId())) continue;
-            p.setSource(src);
-            toInsert.add(p);
+            Paper found = existing.get(p.getExternalId());
+            if (found == null) {
+                p.setSource(src);
+                toInsert.add(p);
+            } else if (p.getCategories() != null && !p.getCategories().equals(found.getCategories())) {
+                // Row already on file but its category list is missing or stale —
+                // refresh just that column. This is what makes a deep resync able
+                // to backfill cross-list data onto papers synced before the
+                // categories column existed.
+                found.setCategories(p.getCategories());
+                toUpdate.add(found);
+            }
         }
         if (!toInsert.isEmpty()) papers.saveAll(toInsert);
+        if (!toUpdate.isEmpty()) papers.saveAll(toUpdate);
         return new int[]{toInsert.size(), existing.size()};
     }
 
@@ -489,6 +504,19 @@ public class ArxivSyncService implements SourceSyncService {
                 topicCode = ((Element) primary.item(0)).getAttribute("term");
             }
 
+            // Every category the paper is tagged with (primary + cross-lists),
+            // from the Atom <category term="…"> elements. Stored comma-delimited
+            // with leading/trailing commas so the feed can match an exact term
+            // with a LIKE '%,term,%' without false positives.
+            java.util.LinkedHashSet<String> cats = new java.util.LinkedHashSet<>();
+            if (topicCode != null && !topicCode.isBlank()) cats.add(topicCode.trim());
+            NodeList catNodes = e.getElementsByTagNameNS(ATOM_NS, "category");
+            for (int j = 0; j < catNodes.getLength(); j++) {
+                String term = ((Element) catNodes.item(j)).getAttribute("term");
+                if (term != null && !term.isBlank()) cats.add(term.trim());
+            }
+            String categories = cats.isEmpty() ? null : "," + String.join(",", cats) + ",";
+
             // PDF link
             String pdfUrl = null;
             String htmlUrl = null;
@@ -511,6 +539,7 @@ public class ArxivSyncService implements SourceSyncService {
             p.setUrl(htmlUrl);
             p.setPdfUrl(pdfUrl);
             p.setTopicCode(topicCode);
+            p.setCategories(categories);
             p.setPublishedAt(published);
             out.add(p);
         }
