@@ -183,6 +183,7 @@ const dict: Record<Locale, Record<string, string>> = {
 
     "card.saved": "★ saved",
     "card.cached": "cached",
+    "card.crosslisted": "Cross-listed into {topic} (primary category differs)",
 
     "pagination.range": "{start}–{end} of {total}",
     "pagination.go_to": "Go to",
@@ -399,6 +400,7 @@ const dict: Record<Locale, Record<string, string>> = {
 
     "card.saved": "★ 已收藏",
     "card.cached": "已快取",
+    "card.crosslisted": "交叉列名於 {topic}（主分類為其他類別）",
 
     "pagination.range": "第 {start}–{end} 筆，共 {total} 筆",
     "pagination.go_to": "前往",
@@ -615,6 +617,7 @@ const dict: Record<Locale, Record<string, string>> = {
 
     "card.saved": "★ 已收藏",
     "card.cached": "已缓存",
+    "card.crosslisted": "交叉列名于 {topic}（主分类为其他类别）",
 
     "pagination.range": "第 {start}–{end} 条，共 {total} 条",
     "pagination.go_to": "跳转",
@@ -832,6 +835,7 @@ const dict: Record<Locale, Record<string, string>> = {
 
     "card.saved": "★ 保存済み",
     "card.cached": "キャッシュ済み",
+    "card.crosslisted": "{topic} にクロスリスト（主カテゴリは別）",
 
     "pagination.range": "{total} 件中 {start}–{end} 件",
     "pagination.go_to": "ページ移動",
@@ -1052,6 +1056,7 @@ const dict: Record<Locale, Record<string, string>> = {
 
     "card.saved": "★ gespeichert",
     "card.cached": "im Cache",
+    "card.crosslisted": "Querverweis in {topic} (primäre Kategorie weicht ab)",
 
     "pagination.range": "{start}–{end} von {total}",
     "pagination.go_to": "Gehe zu",

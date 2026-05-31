@@ -24,6 +24,12 @@ interface Props {
   selected?: boolean;
   onSelect?: (paperId: number) => void;
   showScore?: boolean;
+  /**
+   * The topic the feed is currently filtered by. When it differs from the
+   * paper's primary {@code topicCode}, this card is only here because the paper
+   * is cross-listed into that topic — we flag that with a small marker.
+   */
+  activeTopicCode?: string | null;
 }
 
 export default function PaperCard({
@@ -35,6 +41,7 @@ export default function PaperCard({
   selected = false,
   onSelect,
   showScore = false,
+  activeTopicCode = null,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -136,6 +143,14 @@ export default function PaperCard({
           <div className="flex items-center gap-2 text-xs text-zinc-500 mb-1 flex-wrap">
             {paper.topicCode && (
               <span className="rounded bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5">{paper.topicCode}</span>
+            )}
+            {activeTopicCode && activeTopicCode !== paper.topicCode && (
+              <span
+                title={t("card.crosslisted", { topic: activeTopicCode })}
+                className="rounded bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 px-1.5 py-0.5"
+              >
+                +{activeTopicCode}
+              </span>
             )}
             <span>{fmtDate(paper.publishedAt)}</span>
             {saved && <span className="text-emerald-600 dark:text-emerald-400">{t("card.saved")}</span>}

@@ -30,6 +30,7 @@ export default function FeedPage() {
   const setPage = usePapersStore((s) => s.setPage);
   const setSize = usePapersStore((s) => s.setSize);
   const selected = usePapersStore((s) => s.selected);
+  const activeTopic = usePapersStore((s) => s.topic);
   const toggleSelect = usePapersStore((s) => s.toggleSelect);
   const selectAll = usePapersStore((s) => s.selectAll);
   const clearSelection = usePapersStore((s) => s.clearSelection);
@@ -216,6 +217,7 @@ export default function FeedPage() {
             cached={downloadedPaperIds.has(p.id)}
             score={p.score}
             showScore={keywords.length > 0}
+            activeTopicCode={activeTopic}
             selectable
             selected={selected.has(p.id)}
             onSelect={toggleSelect}
