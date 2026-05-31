@@ -54,14 +54,18 @@ public class PaperController {
     }
 
     /**
-     * Returns a previously-cached translation. 404 means "not yet translated for this locale" —
-     * the frontend treats that as "show original + offer Translate button" rather than an error.
+     * Returns a previously-cached translation, or {@code 204 No Content} when none
+     * exists yet for this locale. The feed probes this endpoint once per visible
+     * card, so "not translated yet" is the common, expected case — returning 204
+     * rather than 404 keeps it out of the browser's console as a network error.
+     * The frontend treats an empty body as "show original + offer Translate button".
      */
     @GetMapping("/{id}/translation")
-    public PaperTranslation getTranslation(@PathVariable Long id,
-                                           @RequestParam(name = "locale") String locale) {
+    public ResponseEntity<PaperTranslation> getTranslation(@PathVariable Long id,
+                                                           @RequestParam(name = "locale") String locale) {
         return translations.findCached(id, locale)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "No translation cached"));
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     /** Generates (or returns cached) translation for the paper. Idempotent per (paper, locale). */

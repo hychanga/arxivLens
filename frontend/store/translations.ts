@@ -13,7 +13,7 @@ interface TranslationsState {
   notFound: Set<Key>;
   /** Look up an already-fetched translation for the given paper+locale, or undefined. */
   get: (paperId: number, locale: string) => PaperTranslation | undefined;
-  /** Try to fetch a previously-cached translation. 404 means "not yet generated" — handled silently. */
+  /** Try to fetch a previously-cached translation. An empty 204 means "not yet generated" — handled silently. */
   fetchCached: (paperId: number, locale: string) => Promise<void>;
   /** Trigger AI translation (uses cache on the backend if available). */
   generate: (paperId: number, locale: string) => Promise<PaperTranslation>;
@@ -44,15 +44,25 @@ export const useTranslationsStore = create<TranslationsState>((set, get) => ({
     set({ loading: nextLoading });
 
     try {
-      const t = await apiFetch<PaperTranslation>(
+      // 204 (nothing cached yet) resolves to undefined rather than throwing.
+      const t = await apiFetch<PaperTranslation | undefined>(
         `/papers/${paperId}/translation?locale=${encodeURIComponent(locale)}`
       );
       set((prev) => {
         const loading = new Set(prev.loading);
         loading.delete(key);
+        if (!t) {
+          // Not translated for this locale — remember so we don't keep probing,
+          // and the card falls back to original text + a Translate button.
+          const notFound = new Set(prev.notFound);
+          notFound.add(key);
+          return { loading, notFound };
+        }
         return { byKey: { ...prev.byKey, [key]: t }, loading };
       });
     } catch (e) {
+      // A real error (network / 5xx). Clear the loading marker but DON'T mark
+      // notFound, so a later render can retry once the backend recovers.
       set((prev) => {
         const loading = new Set(prev.loading);
         loading.delete(key);
