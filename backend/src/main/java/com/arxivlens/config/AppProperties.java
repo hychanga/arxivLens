@@ -14,8 +14,18 @@ public record AppProperties(
         Frontend frontend,
         PasswordReset passwordReset,
         Oauth oauth,
-        BusinessWeekly businessWeekly
+        BusinessWeekly businessWeekly,
+        Cron cron
 ) {
+
+    /**
+     * Shared secret for the external-cron trigger endpoints ({@code /api/cron/**}).
+     * On Render's free tier the in-process {@code @Scheduled} jobs don't fire while
+     * the service is asleep, so a free external scheduler (cron-job.org, GitHub
+     * Actions, …) drives them by POSTing with this token. Blank → the cron
+     * endpoints are disabled (return 503).
+     */
+    public record Cron(String token) {}
 
     /**
      * Business Weekly is a "search-results" source: the Latest feed is built by

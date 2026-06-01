@@ -32,11 +32,22 @@ public class SyncScheduler {
     @Scheduled(cron = "${app.scheduler.arxiv-cron:0 0 */6 * * *}")
     public void arxiv() {
         if (!enabled) return;
-        log.info("Scheduled arXiv sync starting");
+        runArxivSyncAndNotify();
+    }
+
+    /**
+     * Runs the arXiv sync and emails the summary. Shared by the in-process
+     * {@code @Scheduled} job and the external-cron trigger endpoint — on Render
+     * Free the scheduled job can't fire while the service is asleep, so an
+     * external scheduler calls this via {@code /api/cron/arxiv-sync}.
+     */
+    public SyncResult runArxivSyncAndNotify() {
+        log.info("arXiv sync starting");
         SyncResult r = dispatcher.syncByCode("arxiv");
         log.info("arXiv sync done: fetched={} inserted={} skipped={} error={}",
                 r.fetched(), r.inserted(), r.skipped(), r.error());
         notifyArxivComplete(r);
+        return r;
     }
 
     /**

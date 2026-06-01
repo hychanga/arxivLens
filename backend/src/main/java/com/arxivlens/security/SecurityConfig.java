@@ -92,6 +92,10 @@ public class SecurityConfig {
                                 "/actuator/health",
                                 "/actuator/info"
                         ).permitAll()
+                        // External-cron triggers authenticate with a shared secret
+                        // token inside the handler (no JWT), so they're permitAll at
+                        // the filter layer. CronController rejects a missing/bad token.
+                        .requestMatchers(HttpMethod.POST, "/api/cron/**").permitAll()
                         // <img src> tags can't send an Authorization header, so
                         // the proxy must be reachable anonymously. The service
                         // restricts upstreams to a publisher allow-list so this

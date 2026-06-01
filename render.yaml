@@ -113,3 +113,10 @@ services:
       # here to change or disable.
       - key: SYNC_NOTIFY_EMAIL
         sync: false
+
+      # Shared secret for the external-cron trigger (POST /api/cron/arxiv-sync).
+      # Render Free sleeps the service, so in-process @Scheduled is unreliable;
+      # point a free external scheduler (cron-job.org) at that endpoint every 6h
+      # with ?token=<this>. Generate with `openssl rand -hex 32`. Blank = off.
+      - key: CRON_TOKEN
+        sync: false
