@@ -102,9 +102,12 @@ services:
       - key: GOOGLE_CLIENT_ID
         sync: false           # e.g. 880984423210-…apps.googleusercontent.com
 
-      # Toggle scheduler if you want to throttle outbound API usage on cold starts.
+      # In-process @Scheduled is unreliable on Render Free (the service sleeps at
+      # the cron times), so the 6h sync is driven externally by GitHub Actions /
+      # cron-job.org hitting /api/cron/arxiv-sync. Keep the in-process scheduler
+      # OFF to avoid a duplicate run when the service happens to be awake at a tick.
       - key: SCHEDULER_ENABLED
-        value: "true"
+        value: "false"
 
       # Email a summary after each scheduled arXiv sync (every 6h). Blank
       # disables it. Delivery needs RESEND_API_KEY set above; with Resend's dev
