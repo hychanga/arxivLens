@@ -34,6 +34,7 @@ export default function AdminPage() {
   const [backfilling, setBackfilling] = useState(false);
   const [resyncing, setResyncing] = useState(false);
   const [resyncDays, setResyncDays] = useState(30);
+  const [testingEmail, setTestingEmail] = useState(false);
   const [newTopic, setNewTopic] = useState({ code: "", name: "" });
 
   useEffect(() => {
@@ -133,6 +134,21 @@ export default function AdminPage() {
       flash(e instanceof Error ? e.message : "Resync failed", "error");
     } finally {
       setResyncing(false);
+    }
+  }
+
+  async function testSyncEmail() {
+    setTestingEmail(true);
+    try {
+      const r = await apiFetch<{ sent: boolean; to?: string; message: string }>(
+        "/admin/notify-test",
+        { method: "POST" }
+      );
+      flash(r.message, r.sent ? "success" : "error");
+    } catch (e) {
+      flash(e instanceof Error ? e.message : "Test email failed", "error");
+    } finally {
+      setTestingEmail(false);
     }
   }
 
@@ -292,6 +308,21 @@ export default function AdminPage() {
           </button>
         </div>
         <p className="text-xs text-zinc-500">{t("admin.resync_hint")}</p>
+
+        {/* Manually fire the post-sync notification email to verify mail delivery
+            without waiting for the 6h cron. */}
+        <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-zinc-100 dark:border-zinc-800">
+          <button
+            onClick={testSyncEmail}
+            disabled={testingEmail}
+            title={t("admin.notify_test_hint")}
+            className="rounded border border-zinc-300 dark:border-zinc-700 px-3 py-1 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50"
+          >
+            {testingEmail ? `${t("admin.notify_test_button")}…` : t("admin.notify_test_button")}
+          </button>
+          <span className="text-xs text-zinc-500">{t("admin.notify_test_hint")}</span>
+        </div>
+
         <ul className="space-y-1">
           {sources.map((s) => (
             <li key={s.id} className="flex items-center gap-3 text-sm py-1">

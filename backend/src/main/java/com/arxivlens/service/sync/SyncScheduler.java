@@ -58,6 +58,22 @@ public class SyncScheduler {
         email.sendPlainText(to, subject, body);
     }
 
+    /**
+     * Sends a one-off test of the post-sync notification email to the configured
+     * address, so an admin can verify mail delivery without waiting for the 6h
+     * cron. Returns the target address, or {@code null} if no notify-email is set.
+     */
+    public String sendTestNotification() {
+        String to = props.scheduler() == null ? null : props.scheduler().notifyEmail();
+        if (to == null || to.isBlank()) return null;
+        String body = "This is a test of the scheduled-sync email notification, sent at "
+                + Instant.now() + " (UTC).\n\n"
+                + "If you received this, the post-sync summary email is configured correctly.\n\n"
+                + "— arxivLens";
+        email.sendPlainText(to, "arxivLens — test notification", body);
+        return to;
+    }
+
     @Scheduled(cron = "${app.scheduler.hbr-cron:0 30 */6 * * *}")
     public void hbr() {
         if (!enabled) return;

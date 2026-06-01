@@ -11,6 +11,7 @@ import com.arxivlens.repository.TopicRepository;
 import com.arxivlens.service.PaperService;
 import com.arxivlens.service.SettingService;
 import com.arxivlens.service.sync.SyncDispatcher;
+import com.arxivlens.service.sync.SyncScheduler;
 import com.arxivlens.web.ApiException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +45,7 @@ public class AdminController {
     private final SyncDispatcher dispatcher;
     private final SourceRepository sources;
     private final TopicRepository topics;
+    private final SyncScheduler scheduler;
 
     private static final Logger log = LoggerFactory.getLogger(AdminController.class);
 
@@ -59,13 +61,15 @@ public class AdminController {
                            PaperService paperService,
                            SyncDispatcher dispatcher,
                            SourceRepository sources,
-                           TopicRepository topics) {
+                           TopicRepository topics,
+                           SyncScheduler scheduler) {
         this.settings = settings;
         this.papers = papers;
         this.paperService = paperService;
         this.dispatcher = dispatcher;
         this.sources = sources;
         this.topics = topics;
+        this.scheduler = scheduler;
     }
 
     @GetMapping("/settings")
@@ -158,5 +162,23 @@ public class AdminController {
                 "days", safeDays,
                 "topics", active.size(),
                 "message", "Resync started in the background; check the feed in a few minutes.");
+    }
+
+    /**
+     * Sends a one-off test of the post-sync notification email so the admin can
+     * verify mail delivery without waiting for the 6h cron. The send itself is
+     * best-effort (EmailService logs and swallows provider errors), so a "sent"
+     * here means "handed to the provider" — confirm via the inbox / server logs.
+     */
+    @PostMapping("/notify-test")
+    public Map<String, Object> testNotifyEmail() {
+        String to = scheduler.sendTestNotification();
+        if (to == null) {
+            return Map.of("sent", false,
+                    "message", "No notify address configured. Set SYNC_NOTIFY_EMAIL.");
+        }
+        return Map.of("sent", true, "to", to,
+                "message", "Test email handed to the mail provider — check " + to
+                        + " (and the server logs if it doesn't arrive).");
     }
 }
