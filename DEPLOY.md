@@ -172,7 +172,43 @@ HTTPS and exactly match a registered Return URL even in popup mode.
    - **Change passwords** — currently the demo passwords are static. The fastest path is to register a fresh account via the Login → Register tab and discard the demo accounts.
    - Hit **Sync now** in the Admin panel if the auto-sync hasn't fired yet.
 
-## 5. Updating
+## 5. Automated 6-hourly sync + email notifications
+
+The backend refreshes arXiv every 6 hours and emails a summary when it finishes. Because **Render Free spins the service down after ~15 min idle**, the in-process `@Scheduled` job can't reliably fire at the cron times — so the schedule is driven by a free **external** trigger instead.
+
+**How the pieces fit:**
+
+- `POST /api/cron/arxiv-sync` — token-protected endpoint (no login needed) that runs the sync + sends the summary email. The request also wakes the sleeping service.
+- A scheduled **GitHub Actions** workflow (`.github/workflows/sync-cron.yml`, already in the repo) POSTs to it every 6h.
+- `EmailService` (Resend) sends the summary to `SYNC_NOTIFY_EMAIL`.
+
+**Setup:**
+
+1. **Backend → Render → Environment:**
+
+   | Key                 | Value                                                                                   |
+   | ------------------- | --------------------------------------------------------------------------------------- |
+   | `CRON_TOKEN`        | a strong shared secret — `openssl rand -hex 32`                                          |
+   | `SYNC_NOTIFY_EMAIL` | where to send the summary (blank disables the email)                                     |
+   | `SCHEDULER_ENABLED` | `false` — the external cron drives it now; avoids a duplicate run when the service is awake at a tick |
+
+   Email delivery also needs `RESEND_API_KEY` (see §2). With Resend's dev sandbox the recipient must be the address you registered with Resend.
+
+2. **GitHub → repo → Settings → Secrets and variables → Actions:**
+   - Add a repository **secret** `CRON_TOKEN` with the *same* value as the backend.
+   - (Optional) a repository **variable** `BACKEND_URL` if your backend isn't at the default `https://arxivlens-backend.onrender.com`.
+
+   The workflow then runs at `00/06/12/18:00 UTC` (GitHub may delay a few minutes). Until `CRON_TOKEN` is set it skips with a warning instead of failing.
+
+**Trigger / test it manually:**
+
+- GitHub → **Actions** → *Scheduled arXiv sync* → **Run workflow**, or `gh workflow run sync-cron.yml`, or
+- direct: `curl -X POST "https://arxivlens-backend.onrender.com/api/cron/arxiv-sync?token=<CRON_TOKEN>"` → `{"status":"started"}`, then a summary email arrives in ~1–2 min.
+- To test only the **email** path (no sync), use the **Test sync email** button in Admin → Data Sources.
+
+**Prefer a different scheduler?** Any cron service works — e.g. cron-job.org: POST that URL every 6h with timeout ≥30 s (for the cold-start wake). Alternatively set `SCHEDULER_ENABLED=true` and keep the service awake with an uptime pinger, but that's less reliable and burns the free instance-hours.
+
+## 6. Updating
 
 Push to `main`. Vercel and Render both auto-redeploy:
 
@@ -182,26 +218,27 @@ git push origin main
 
 Vercel typically finishes in ~1 min, Render in ~5 min (Docker rebuild).
 
-## 6. Common gotchas
+## 7. Common gotchas
 
 | Symptom                                                                  | Cause                                                                                | Fix                                                                                       |
 | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
 | Frontend loads but API calls all 401 / network error                     | CORS — `APP_CORS_ALLOWED_ORIGINS` doesn't include the exact Vercel URL               | Add the URL (no trailing slash) and restart Render service                                |
 | Backend health check fails / `out of memory` in Render logs              | 512 MB is tight. Some startup spike pushes over.                                     | Lower `MaxRAMPercentage` to 60, switch to `-XX:+UseSerialGC` (already set in render.yaml) |
 | Login works but Latest is empty for a long time                          | First wake-up sync is still running, or Render slept                                 | Refresh after 15 s. If still empty, check Render logs for sync errors                     |
+| 6-hourly sync / notification email never runs                            | Render Free sleeps the service, so the in-process `@Scheduled` job doesn't fire      | Drive it externally — see §5 (set `CRON_TOKEN` + the GitHub Actions secret; `SCHEDULER_ENABLED=false`) |
 | `Gemini 403: API_KEY_INVALID`                                            | Wrong / unenabled key                                                                | Regenerate key in AI Studio; key must come from `aistudio.google.com/apikey` (not Cloud Console) |
 | `Gemini 400: User location is not supported`                             | Render egress IP geo-blocked by Google (Singapore, some EU regions)                  | Move the Render service to `oregon` (already the default in `render.yaml`). Region change requires creating a new service and re-entering all `sync: false` env vars |
 | `Communications link failure` to TiDB                                    | Wrong region or missing TLS args                                                     | URL must include `useSSL=true&enabledTLSProtocols=TLSv1.2,TLSv1.3`                        |
 | Render build fails: `Cannot find symbol DataSeeder constructor argument` | Old artifact compiled before the seeder change                                       | Force rebuild from Render → service → Manual Deploy → Clear build cache & deploy          |
 
-## 7. Things this setup intentionally does NOT do
+## 8. Things this setup intentionally does NOT do
 
 - **No Flyway / Liquibase** — schema is managed by Hibernate `ddl-auto=update`. Fine for hobby, not for production with real users.
 - **No backups** — TiDB Cloud Serverless free tier has a basic point-in-time recovery window, but no scheduled exports. If your data matters, export manually.
 - **No CDN / image optimization** — Vercel handles it for the Next.js side; backend serves PDFs directly which is slow over Render free.
 - **No custom domain** — both Vercel and Render let you bring a domain (free), but DNS is on you.
 
-## 8. Switching off / tearing down
+## 9. Switching off / tearing down
 
 | Platform     | Where                                                                |
 | ------------ | -------------------------------------------------------------------- |
