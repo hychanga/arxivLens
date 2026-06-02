@@ -87,6 +87,24 @@ def page_bg():
     c.setFillColor(WHITE); c.rect(0, 0, PW, PH, fill=1, stroke=0)
 
 
+# ===== Cover =====
+page_bg()
+rect(0.95, 2.5, 0.18, 2.0, ACCENT)
+para(1.3, 2.4, 11.2, '<font name="JhengHei-Bold" size="52" color="#18181B">arxivLens</font>', size=52, leading=58)
+para(1.34, 3.7, 11.2,
+     '<font name="JhengHei-Bold" size="24" color="#2563EB">系統介紹</font>'
+     '<font size="18" color="#71717A">   System Introduction</font>', size=24, leading=30)
+para(1.34, 4.55, 11.2, "arXiv / HBR 論文聚合閱讀器 — AI 摘要、關鍵字評分、多語翻譯",
+     size=15, color=INK, leading=20)
+rect(1.34, 6.05, 10.6, 0.02, LINE)
+para(1.34, 6.2, 11.2,
+     "Next.js 16 · React 19 · Spring Boot 4 · Java 25 · TiDB Cloud · Google Gemini 2.5 Flash",
+     size=12, color=MUTED)
+para(10.7, 0.7, 2.0, '<font name="JhengHei-Bold" color="#71717A">2026.06</font>',
+     size=12, align=TA_CENTER)
+c.showPage()
+
+
 # ===== Slide 1 — Architecture =====
 page_bg()
 header("系統架構", "System Architecture", 1)

@@ -117,6 +117,20 @@ def bg(slide):
     slide.shapes._spTree.remove(r._element); slide.shapes._spTree.insert(2, r._element)
 
 
+# ============================ Cover ============================
+s = prs.slides.add_slide(BLANK); bg(s)
+barc = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.95), Inches(2.5), Inches(0.18), Inches(2.0))
+barc.fill.solid(); barc.fill.fore_color.rgb = ACCENT; barc.line.fill.background(); barc.shadow.inherit = False
+text(s, 1.3, 2.35, 11.2, 1.2, [[("arxivLens", 54, True, INK)]])
+text(s, 1.34, 3.6, 11.2, 0.7, [[("系統介紹   ", 24, True, ACCENT), ("System Introduction", 18, False, MUTED)]])
+text(s, 1.34, 4.5, 11.2, 0.6, [[("arXiv / HBR 論文聚合閱讀器 — AI 摘要、關鍵字評分、多語翻譯", 15, False, INK)]])
+dv = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(1.34), Inches(6.05), Inches(10.6), Inches(0.014))
+dv.fill.solid(); dv.fill.fore_color.rgb = LINE; dv.line.fill.background(); dv.shadow.inherit = False
+text(s, 1.34, 6.2, 11.2, 0.5,
+     [[("Next.js 16 · React 19 · Spring Boot 4 · Java 25 · TiDB Cloud · Google Gemini 2.5 Flash", 12, False, MUTED)]])
+text(s, 10.6, 0.7, 2.1, 0.4, [[("2026.06", 12, True, MUTED)]], align=PP_ALIGN.RIGHT)
+
+
 # ============================ Slide 1 — Architecture ============================
 s = prs.slides.add_slide(BLANK); bg(s)
 header(s, "系統架構", "System Architecture", 1)
