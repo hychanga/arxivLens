@@ -105,6 +105,25 @@ public class ArxivSyncService implements SourceSyncService {
     private static final Duration INITIAL_LOOKBACK = Duration.ofDays(7);
 
     /**
+     * Overlap re-scanned on every incremental run to absorb arXiv's announcement
+     * lag. arXiv backdates a paper's {@code lastUpdatedDate} to its actual
+     * submission/revision instant, but the paper only becomes queryable in the
+     * API 1-3 days later (after it's announced). A naive window of
+     * {@code [lastSyncedAt, now]} therefore never sees those papers: by the time
+     * they're queryable their {@code lastUpdatedDate} already sits behind the
+     * watermark, which has marched forward to "now" on every 6h run — a
+     * permanent hole that shows up as run after run reporting "0 new".
+     *
+     * <p>So instead of querying from the bare watermark, we query from
+     * {@code watermark − LAG_BUFFER}, re-scanning the last few days each run.
+     * The extra rows are nearly free: {@link #upsertAll} decides existence with
+     * one batched IN-query per page and skips everything already on file, so the
+     * only real cost is re-fetching a few already-seen arXiv pages. Set wider
+     * than the typical 1-3 day lag to also cover the Fri-Sat announcement pause.
+     */
+    private static final Duration LAG_BUFFER = Duration.ofDays(4);
+
+    /**
      * Safety ceiling on how many pages we'll pull for a single topic before
      * bailing — guards against runaway loops if arXiv ever returns infinite
      * results. {@code 50 × perTopicMax(2000) = 100k} papers per topic per
@@ -155,16 +174,19 @@ public class ArxivSyncService implements SourceSyncService {
         int totalFetched = 0, totalInserted = 0, totalSkipped = 0;
         StringBuilder errors = new StringBuilder();
 
-        // Per-topic incremental sync. Categories that haven't accumulated new
-        // arXiv submissions since lastSyncedAt yield a zero-result query and
-        // we skip straight past — no wasted work re-downloading rows we
-        // already have. Topics that ARE new always pull a bounded window
-        // (INITIAL_LOOKBACK) so the first sync after enabling a topic
+        // Per-topic incremental sync. Each run re-scans from
+        // (lastSyncedAt − LAG_BUFFER) so freshly-announced papers — whose
+        // backdated lastUpdatedDate already sits behind the watermark by the
+        // time arXiv makes them queryable — still fall inside the window
+        // instead of slipping through a permanent hole. The overlap is cheap:
+        // already-stored rows are skipped by the batched existence check in
+        // upsertAll. Topics that have never synced pull a bounded
+        // INITIAL_LOOKBACK window so the first run after enabling a topic
         // doesn't try to scan all of arXiv's history.
         for (int i = 0; i < activeTopics.size(); i++) {
             Topic topic = activeTopics.get(i);
             Instant since = topic.getLastSyncedAt() != null
-                    ? topic.getLastSyncedAt()
+                    ? topic.getLastSyncedAt().minus(LAG_BUFFER)
                     : syncStart.minus(INITIAL_LOOKBACK);
 
             try {
