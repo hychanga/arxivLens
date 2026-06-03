@@ -69,7 +69,7 @@ export default function TopBar() {
           <span aria-hidden>☰</span>
         </button>
 
-        <span className="font-semibold mr-1 sm:mr-2">arxivLens</span>
+        <span className="font-semibold mr-1 sm:mr-2">arXivLens</span>
 
         <nav aria-label="Sources" className="flex items-center gap-1 flex-wrap">
           {enabled.map((s) => (

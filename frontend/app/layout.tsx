@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "arxivLens",
+  title: "arXivLens",
   description: "Curated arXiv & HBR feeds with AI summaries",
 };
 

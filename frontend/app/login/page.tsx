@@ -149,7 +149,7 @@ function LoginPageInner() {
         <LocaleSelector />
       </div>
       <div className="w-full max-w-md rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 sm:p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold tracking-tight">arxivLens</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">arXivLens</h1>
         <p className="mt-1 text-sm text-zinc-500">
           {mode === "login"
             ? t("login.heading_signin")
