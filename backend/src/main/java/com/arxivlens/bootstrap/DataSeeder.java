@@ -63,9 +63,32 @@ public class DataSeeder implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         seedSettings();
         seedSources();
+        reconcileSourceNames();
         seedTopics();
         seedAdmin();
         seedDemoUser();
+    }
+
+    /**
+     * One-off, self-deactivating renames for seeded sources whose display name
+     * changed after they were first seeded. {@link #ensureSource} only inserts
+     * missing rows, so a name change in code never reaches a DB that already
+     * has the row — this nudges a known old value to the new one. It no-ops once
+     * renamed, and only fires when the name still matches the exact old value,
+     * so an admin's custom rename is never clobbered.
+     */
+    private void reconcileSourceNames() {
+        renameIfMatches("hbr", "Harvard Business Review", "哈佛商業評論");
+    }
+
+    private void renameIfMatches(String code, String oldName, String newName) {
+        sources.findByCode(code).ifPresent(s -> {
+            if (oldName.equals(s.getName())) {
+                s.setName(newName);
+                sources.save(s);
+                log.info("Renamed source {} → {}", code, newName);
+            }
+        });
     }
 
     // ---------- lookup data ----------
@@ -92,7 +115,7 @@ public class DataSeeder implements ApplicationRunner {
     private void seedSources() {
         ensureSource("arxiv", "arXiv",
                 "Computer science & physics preprints — synced every 6 hours.", 1);
-        ensureSource("hbr", "Harvard Business Review",
+        ensureSource("hbr", "哈佛商業評論",
                 "Management & leadership insights via RSS.", 2);
         // Manual-paste source (no real auto-sync) — still needs its row in prod,
         // where data.sql is disabled and this Java seeder is the only seed path.
