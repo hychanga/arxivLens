@@ -1,9 +1,9 @@
-name: Scheduled arXiv sync
+name: Scheduled source sync
 
 # Render's free tier sleeps the backend after 15 min idle, so its in-process
-# @Scheduled job is unreliable. This workflow POSTs to the token-protected
-# trigger endpoint every 6h instead — the request wakes the service and runs
-# the sync + notification email.
+# @Scheduled jobs are unreliable. This workflow POSTs to the token-protected
+# trigger endpoints every 6h instead — the request wakes the service and runs
+# each sync + notification email.
 #
 # Setup (one time):
 #   1. Backend (Render): set env CRON_TOKEN to a secret, e.g. `openssl rand -hex 32`.
@@ -38,5 +38,23 @@ jobs:
           curl -fsS --max-time 120 --retry 3 --retry-all-errors --retry-delay 30 \
             -X POST -H "X-Cron-Token: ${CRON_TOKEN}" \
             "${BACKEND_URL}/api/cron/arxiv-sync"
+          echo
+          echo "Triggered. The summary email follows once the sync finishes."
+
+      - name: Trigger McKinsey sync
+        env:
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
+          BACKEND_URL: ${{ vars.BACKEND_URL || 'https://arxivlens-backend.onrender.com' }}
+        run: |
+          if [ -z "$CRON_TOKEN" ]; then
+            echo "::warning::CRON_TOKEN secret is not set — skipping. Add it under Settings → Secrets and variables → Actions."
+            exit 0
+          fi
+          echo "Triggering ${BACKEND_URL}/api/cron/mckinsey-sync"
+          # Service is already awake from the arXiv trigger above, so no cold-start
+          # margin needed — but keep the retries for transient network blips.
+          curl -fsS --max-time 120 --retry 3 --retry-all-errors --retry-delay 30 \
+            -X POST -H "X-Cron-Token: ${CRON_TOKEN}" \
+            "${BACKEND_URL}/api/cron/mckinsey-sync"
           echo
           echo "Triggered. The summary email follows once the sync finishes."

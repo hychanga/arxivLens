@@ -46,22 +46,41 @@ public class SyncScheduler {
         SyncResult r = dispatcher.syncByCode("arxiv");
         log.info("arXiv sync done: fetched={} inserted={} skipped={} error={}",
                 r.fetched(), r.inserted(), r.skipped(), r.error());
-        notifyArxivComplete(r);
+        notifyComplete("arXiv", "papers", r);
         return r;
     }
 
     /**
-     * Emails a one-line summary of a finished scheduled arXiv sync to the address
-     * in {@code app.scheduler.notify-email} (if set). Best-effort: delivery is
+     * McKinsey counterpart of {@link #runArxivSyncAndNotify()}. Shared by the
+     * in-process {@code @Scheduled} job and the external-cron trigger endpoint
+     * ({@code /api/cron/mckinsey-sync}) so McKinsey gets the same Render-Free
+     * treatment as arXiv: an external scheduler can wake the service and run the
+     * sync even when the in-process timer can't fire.
+     */
+    public SyncResult runMckinseySyncAndNotify() {
+        log.info("McKinsey sync starting");
+        SyncResult r = dispatcher.syncByCode("mckinsey");
+        log.info("McKinsey sync done: fetched={} inserted={} skipped={} error={}",
+                r.fetched(), r.inserted(), r.skipped(), r.error());
+        notifyComplete("McKinsey", "articles", r);
+        return r;
+    }
+
+    /**
+     * Emails a one-line summary of a finished scheduled sync to the address in
+     * {@code app.scheduler.notify-email} (if set). Best-effort: delivery is
      * delegated to {@link EmailService}, which logs and swallows any provider
      * error, so a mail hiccup never affects the sync itself.
+     *
+     * @param label source display name for the subject/body (e.g. {@code "arXiv"})
+     * @param noun  what a row is called for this source ({@code "papers"} / {@code "articles"})
      */
-    private void notifyArxivComplete(SyncResult r) {
+    private void notifyComplete(String label, String noun, SyncResult r) {
         String to = props.scheduler() == null ? null : props.scheduler().notifyEmail();
         if (to == null || to.isBlank()) return;
-        String subject = "arxivLens — arXiv sync complete (" + r.inserted() + " new)";
-        String body = "The scheduled arXiv sync finished at " + Instant.now() + " (UTC).\n\n"
-                + "New papers inserted: " + r.inserted() + "\n"
+        String subject = "arxivLens — " + label + " sync complete (" + r.inserted() + " new)";
+        String body = "The scheduled " + label + " sync finished at " + Instant.now() + " (UTC).\n\n"
+                + "New " + noun + " inserted: " + r.inserted() + "\n"
                 + "Already on file (skipped): " + r.skipped() + "\n"
                 + "Total entries fetched this run: " + r.fetched() + "\n"
                 + "Errors: " + (r.error() == null ? "none" : r.error()) + "\n\n"
@@ -92,6 +111,12 @@ public class SyncScheduler {
         SyncResult r = dispatcher.syncByCode("hbr");
         log.info("HBR sync done: fetched={} inserted={} skipped={} error={}",
                 r.fetched(), r.inserted(), r.skipped(), r.error());
+    }
+
+    @Scheduled(cron = "${app.scheduler.mckinsey-cron:0 45 */6 * * *}")
+    public void mckinsey() {
+        if (!enabled) return;
+        runMckinseySyncAndNotify();
     }
 
     // Business Weekly intentionally has no scheduled sync — it's a manual paste

@@ -56,6 +56,20 @@ public class CronController {
                 "message", "arXiv sync started; a summary email follows when it finishes.");
     }
 
+    /**
+     * McKinsey counterpart of {@link #arxivSync}. Same token auth and off-thread
+     * execution — McKinsey's RSS pull is quick, but running it off the request
+     * thread keeps the contract identical to the arXiv trigger.
+     */
+    @PostMapping("/mckinsey-sync")
+    public Map<String, Object> mckinseySync(@RequestParam(name = "token", required = false) String token,
+                                            @RequestHeader(name = "X-Cron-Token", required = false) String headerToken) {
+        authorize(token != null ? token : headerToken);
+        executor.submit(scheduler::runMckinseySyncAndNotify);
+        return Map.of("status", "started",
+                "message", "McKinsey sync started; a summary email follows when it finishes.");
+    }
+
     private void authorize(String provided) {
         String expected = props.cron() == null ? null : props.cron().token();
         if (expected == null || expected.isBlank()) {

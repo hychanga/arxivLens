@@ -100,7 +100,26 @@ public class DataSeeder implements ApplicationRunner {
         hbr.setDisplayOrder(2);
         sources.save(hbr);
 
-        log.info("Seeded data sources: arxiv, hbr");
+        // Business Weekly is a manual-paste source (no auto-sync handler beyond a
+        // no-op) — but it still needs its row seeded in prod, where data.sql is
+        // disabled and this Java seeder is the only source of lookup data.
+        Source businessWeekly = new Source();
+        businessWeekly.setCode("businessweekly");
+        businessWeekly.setName("商業週刊");
+        businessWeekly.setDescription("搜尋商業週刊網站，依關鍵字抓取最新文章列表。");
+        businessWeekly.setEnabled(true);
+        businessWeekly.setDisplayOrder(3);
+        sources.save(businessWeekly);
+
+        Source mckinsey = new Source();
+        mckinsey.setCode("mckinsey");
+        mckinsey.setName("McKinsey Quarterly");
+        mckinsey.setDescription("McKinsey Insights & Quarterly articles via RSS — synced daily.");
+        mckinsey.setEnabled(true);
+        mckinsey.setDisplayOrder(4);
+        sources.save(mckinsey);
+
+        log.info("Seeded data sources: arxiv, hbr, businessweekly, mckinsey");
     }
 
     private void seedTopics() {
