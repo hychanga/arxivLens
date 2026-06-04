@@ -280,7 +280,17 @@ function LoginPageInner() {
               broken one: it signals that env-var setup is incomplete instead
               of looking like a real auth feature.
             */}
-            <div className={`mt-3 grid gap-2 ${process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? "grid-cols-2" : "grid-cols-1"}`}>
+            {/*
+              Stack the OAuth buttons in a single full-width column rather than a
+              2-up grid. Side-by-side, each cell is only ~188px wide inside the
+              max-w-md card, but Google's GIS button enforces a ~200px minimum
+              width and overflows into the Apple button — they visibly overlap.
+              Stacking gives every button the full card width (Google renders
+              comfortably; the Apple label never crowds) and matches the
+              full-width submit button above. Works across all locales without
+              having to trim labels per-language.
+            */}
+            <div className="mt-3 grid grid-cols-1 gap-2">
               {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID && (
                 <GoogleSignInButton onError={setOauthError} />
               )}
