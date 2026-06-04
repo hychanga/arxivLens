@@ -81,45 +81,38 @@ public class DataSeeder implements ApplicationRunner {
         log.info("Seeded settings row");
     }
 
+    /**
+     * Seeds each data source individually, inserting only the ones not already
+     * present. NOT guarded by a blanket {@code count() > 0} check: that guard
+     * meant a NEW source added in a later release never reached an existing prod
+     * DB (which already had rows from the first deploy), so the source row — and
+     * therefore its tab and its sync handler — silently never appeared. Keying
+     * off {@code findByCode} makes the seeder additive and safe to re-run.
+     */
     private void seedSources() {
-        if (sources.count() > 0) return;
+        ensureSource("arxiv", "arXiv",
+                "Computer science & physics preprints — synced every 6 hours.", 1);
+        ensureSource("hbr", "Harvard Business Review",
+                "Management & leadership insights via RSS.", 2);
+        // Manual-paste source (no real auto-sync) — still needs its row in prod,
+        // where data.sql is disabled and this Java seeder is the only seed path.
+        ensureSource("businessweekly", "商業週刊",
+                "搜尋商業週刊網站，依關鍵字抓取最新文章列表。", 3);
+        ensureSource("mckinsey", "McKinsey Quarterly",
+                "McKinsey Insights & Quarterly articles via RSS — synced daily.", 4);
+    }
 
-        Source arxiv = new Source();
-        arxiv.setCode("arxiv");
-        arxiv.setName("arXiv");
-        arxiv.setDescription("Computer science & physics preprints — synced every 6 hours.");
-        arxiv.setEnabled(true);
-        arxiv.setDisplayOrder(1);
-        sources.save(arxiv);
-
-        Source hbr = new Source();
-        hbr.setCode("hbr");
-        hbr.setName("Harvard Business Review");
-        hbr.setDescription("Management & leadership insights via RSS.");
-        hbr.setEnabled(true);
-        hbr.setDisplayOrder(2);
-        sources.save(hbr);
-
-        // Business Weekly is a manual-paste source (no auto-sync handler beyond a
-        // no-op) — but it still needs its row seeded in prod, where data.sql is
-        // disabled and this Java seeder is the only source of lookup data.
-        Source businessWeekly = new Source();
-        businessWeekly.setCode("businessweekly");
-        businessWeekly.setName("商業週刊");
-        businessWeekly.setDescription("搜尋商業週刊網站，依關鍵字抓取最新文章列表。");
-        businessWeekly.setEnabled(true);
-        businessWeekly.setDisplayOrder(3);
-        sources.save(businessWeekly);
-
-        Source mckinsey = new Source();
-        mckinsey.setCode("mckinsey");
-        mckinsey.setName("McKinsey Quarterly");
-        mckinsey.setDescription("McKinsey Insights & Quarterly articles via RSS — synced daily.");
-        mckinsey.setEnabled(true);
-        mckinsey.setDisplayOrder(4);
-        sources.save(mckinsey);
-
-        log.info("Seeded data sources: arxiv, hbr, businessweekly, mckinsey");
+    /** Inserts the source if no row with {@code code} exists yet; otherwise no-ops. */
+    private void ensureSource(String code, String name, String description, int displayOrder) {
+        if (sources.findByCode(code).isPresent()) return;
+        Source s = new Source();
+        s.setCode(code);
+        s.setName(name);
+        s.setDescription(description);
+        s.setEnabled(true);
+        s.setDisplayOrder(displayOrder);
+        sources.save(s);
+        log.info("Seeded data source: {}", code);
     }
 
     private void seedTopics() {
