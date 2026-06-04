@@ -41,6 +41,7 @@ function expectedUrlSubstring(sourceCode: string | undefined): string | null {
   switch (sourceCode) {
     case "hbr": return "hbr";
     case "businessweekly": return "businessweekly";
+    case "mckinsey": return "mckinsey";
     default: return null;
   }
 }

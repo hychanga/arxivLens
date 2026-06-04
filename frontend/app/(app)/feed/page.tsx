@@ -173,11 +173,16 @@ export default function FeedPage() {
           })}
         </div>
 
-        {/* Manual paste is for sources without a working auto-sync (HBR's
-            content is paywalled; Business Weekly's search-page markup
-            varied too much to scrape reliably). arXiv has a real RSS-style
-            sync, so its button stays hidden — papers are already there. */}
-        {currentSource && (currentSourceCode === "hbr" || currentSourceCode === "businessweekly") && (
+        {/* Manual paste is for sources where auto-sync can't get the full
+            article: HBR's content is paywalled; Business Weekly's search-page
+            markup varied too much to scrape; McKinsey's RSS carries only a
+            summary and its article pages block server-side fetches, so the
+            full body has to be pasted in. arXiv has a complete feed, so its
+            button stays hidden — papers are already there. */}
+        {currentSource &&
+          (currentSourceCode === "hbr" ||
+            currentSourceCode === "businessweekly" ||
+            currentSourceCode === "mckinsey") && (
           <div className="ml-auto">
             <AddArticleButton
               sourceId={currentSource.id}
