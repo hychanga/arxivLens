@@ -14,6 +14,9 @@ import java.util.Optional;
 
 public interface PaperRepository extends JpaRepository<Paper, Long> {
 
+    /** Papers synced since {@code t} — drives the Workspace "new papers" notification. */
+    long countByFetchedAtAfter(Instant t);
+
     Optional<Paper> findBySourceIdAndExternalId(Long sourceId, String externalId);
 
     /**

@@ -92,6 +92,10 @@ public class SecurityConfig {
                                 "/actuator/health",
                                 "/actuator/info"
                         ).permitAll()
+                        // Workspace Gateway notification aggregation: authenticates via a
+                        // Google id_token in the X-Google-Id-Token header (verified inside
+                        // the handler), not a JWT — so it's permitAll at the filter layer.
+                        .requestMatchers(HttpMethod.GET, "/api/notifications").permitAll()
                         // External-cron triggers authenticate with a shared secret
                         // token inside the handler (no JWT), so they're permitAll at
                         // the filter layer. CronController rejects a missing/bad token.
