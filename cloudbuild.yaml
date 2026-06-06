@@ -1,0 +1,33 @@
+# Cloud Build CI — build the backend image and deploy it to Cloud Run on every
+# push to main (replaces Render's autoDeploy). Mirrors the linguaflow/bizcard
+# pipeline in this same project.
+#
+# Note: the deploy step passes ONLY --image, so it preserves the service's
+# existing env vars + Secret Manager bindings. Runtime config is managed
+# out-of-band with `gcloud run services update` — CI just ships new code.
+substitutions:
+  _SERVICE: arxivlens-backend
+  _REGION: asia-east1
+  _IMAGE: asia-east1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/arxivlens-backend
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    env: ['DOCKER_BUILDKIT=1']
+    args: ['build', '-t', '${_IMAGE}:$SHORT_SHA', '-t', '${_IMAGE}:latest',
+           '-f', 'backend/Dockerfile', 'backend']
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: ['push', '--all-tags', '${_IMAGE}']
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args: ['run', 'deploy', '${_SERVICE}',
+           '--image', '${_IMAGE}:$SHORT_SHA',
+           '--region', '${_REGION}', '--quiet']
+
+# Default machine (e2-standard-2) — free-tier 2,500 build-min/month; do NOT set a
+# custom machineType (those are billed from minute one). Java/Maven build ~3-5 min.
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 1200s
