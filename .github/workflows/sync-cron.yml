@@ -26,7 +26,7 @@ jobs:
       - name: Trigger arXiv sync
         env:
           CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
-          BACKEND_URL: ${{ vars.BACKEND_URL || 'https://arxivlens-backend.onrender.com' }}
+          BACKEND_URL: ${{ vars.BACKEND_URL || 'https://arxivlens-backend-880984423210.asia-east1.run.app' }}
         run: |
           if [ -z "$CRON_TOKEN" ]; then
             echo "::warning::CRON_TOKEN secret is not set — skipping. Add it under Settings → Secrets and variables → Actions."
@@ -44,7 +44,7 @@ jobs:
       - name: Trigger McKinsey sync
         env:
           CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
-          BACKEND_URL: ${{ vars.BACKEND_URL || 'https://arxivlens-backend.onrender.com' }}
+          BACKEND_URL: ${{ vars.BACKEND_URL || 'https://arxivlens-backend-880984423210.asia-east1.run.app' }}
         run: |
           if [ -z "$CRON_TOKEN" ]; then
             echo "::warning::CRON_TOKEN secret is not set — skipping. Add it under Settings → Secrets and variables → Actions."
