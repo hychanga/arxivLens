@@ -29,6 +29,24 @@ steps:
     args: ['run', 'deploy', '${_SERVICE}',
            '--image', '${_IMAGE}:$SHORT_SHA',
            '--region', '${_REGION}', '--quiet']
+  # Keep only the 3 newest Cloud Run revisions (Cloud Run has no native
+  # retention). The just-deployed revision is newest, so it's always kept.
+  # Shell vars are written $$x so Cloud Build passes a literal $x to bash;
+  # ${_SERVICE}/${_REGION} are Cloud Build substitutions. Artifact Registry
+  # images are pruned separately by the repo's keep-recent-3 cleanup policy.
+  - id: prune-revisions
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        echo "Pruning old Cloud Run revisions for ${_SERVICE}, keeping 3 newest…"
+        gcloud run revisions list --service=${_SERVICE} --region=${_REGION} \
+          --sort-by="~metadata.creationTimestamp" --format="value(metadata.name)" \
+          | tail -n +4 \
+          | while read -r rev; do
+              [ -n "$$rev" ] && { echo "deleting $$rev"; gcloud run revisions delete "$$rev" --region=${_REGION} --quiet || true; }
+            done
 
 # Default machine (e2-standard-2) — free-tier 2,500 build-min/month; do NOT set a
 # custom machineType (those are billed from minute one). Java/Maven build ~3-5 min.
