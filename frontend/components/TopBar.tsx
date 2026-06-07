@@ -123,6 +123,14 @@ export default function TopBar() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
+          <a
+            href={process.env.NEXT_PUBLIC_WORKSPACE_URL ?? "https://workspace-gateway.vercel.app"}
+            title="返回 Workspace"
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            <span aria-hidden>⬢</span>
+            <span className="hidden sm:inline">Workspace</span>
+          </a>
           <ThemeToggle />
           <LocaleSelector />
           {user && (
