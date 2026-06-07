@@ -8,7 +8,11 @@
 substitutions:
   _SERVICE: arxivlens-backend
   _REGION: asia-east1
-  _IMAGE: asia-east1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/arxivlens-backend
+  # Project id hardcoded on purpose: Cloud Build does NOT expand built-in
+  # substitutions ($PROJECT_ID) inside a user-substitution value, so nesting it
+  # here produced a literal "$PROJECT_ID" in the image tag. This repo only ever
+  # deploys to this one project, so a literal id is simplest and unambiguous.
+  _IMAGE: asia-east1-docker.pkg.dev/sylvan-faculty-438200-p5/cloud-run-source-deploy/arxivlens-backend
 
 steps:
   - id: build
