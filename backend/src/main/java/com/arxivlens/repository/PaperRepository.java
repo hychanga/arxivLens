@@ -20,6 +20,18 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
     Optional<Paper> findBySourceIdAndExternalId(Long sourceId, String externalId);
 
     /**
+     * Duplicate guard for the manual / URL-import flow — same URL within a
+     * source. Manual rows each get a fresh {@code manual-<uuid>} external id,
+     * so the {@code (source_id, external_id)} unique key never catches a
+     * re-add of the same article; we compare on the user-meaningful URL/title
+     * instead.
+     */
+    Optional<Paper> findFirstBySourceIdAndUrl(Long sourceId, String url);
+
+    /** Duplicate guard for the manual / URL-import flow — same title within a source (case-insensitive). */
+    Optional<Paper> findFirstBySourceIdAndTitleIgnoreCase(Long sourceId, String title);
+
+    /**
      * Existence-and-fetch variant of {@link #findExistingExternalIds} that returns
      * the managed entities, so the sync loop can both decide what to insert and
      * backfill the {@code categories} column on rows it already has.

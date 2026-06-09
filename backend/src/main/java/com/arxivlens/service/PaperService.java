@@ -144,6 +144,11 @@ public class PaperService {
                     "Source \"" + src.getCode() + "\" is disabled. Enable it in Admin before adding articles.");
         }
 
+        String title = req.title().trim();
+        String url = blankToNull(req.url());
+        rejectIfUrlExists(src.getId(), url);
+        rejectIfTitleExists(src.getId(), title);
+
         String externalId = "manual-" + UUID.randomUUID();
         String body = req.content().trim();
         String abstractText = body.length() > ABSTRACT_PREVIEW_CHARS
@@ -156,11 +161,11 @@ public class PaperService {
         p.setSource(src);
         p.setSourceId(src.getId());
         p.setExternalId(externalId);
-        p.setTitle(req.title().trim());
+        p.setTitle(title);
         p.setAuthorsJson(toJsonStringArray(authors));
         p.setAbstractText(abstractText);
         p.setIntroduction(body);
-        p.setUrl(blankToNull(req.url()));
+        p.setUrl(url);
         p.setPdfUrl(null); // manual articles have no PDF URL — the body is the content
         p.setTopicCode(blankToNull(req.topicCode()));
         p.setPublishedAt(req.publishedAt() != null ? req.publishedAt() : Instant.now());
@@ -195,6 +200,11 @@ public class PaperService {
                     "Source \"" + src.getCode() + "\" is disabled. Enable it in Admin before importing articles.");
         }
 
+        // Cheap URL check before the network round-trip — no point fetching a
+        // page we already have. The title check waits until after extraction,
+        // since we only learn the title from the fetched page.
+        rejectIfUrlExists(src.getId(), req.url());
+
         String html = fetchHtml(req.url());
         // Pass the article URL as baseUrl so relative <img src> attributes
         // are resolved into absolute URLs — the frontend renders the markdown
@@ -210,6 +220,8 @@ public class PaperService {
                     "Couldn't extract article content from that URL — the page may be paywalled or "
                             + "rendered entirely in JavaScript. Paste the article text manually instead.");
         }
+
+        rejectIfTitleExists(src.getId(), extracted.title().trim());
 
         String externalId = "manual-" + UUID.randomUUID();
         String body = extracted.content().trim();
@@ -238,6 +250,26 @@ public class PaperService {
                 List.of(),
                 p.getPublishedAt()
         );
+    }
+
+    /**
+     * Rejects a manual add when another article in the same source already has
+     * this URL. No-op when {@code url} is null (paste-without-link). Pairs with
+     * {@link #rejectIfTitleExists}.
+     */
+    private void rejectIfUrlExists(Long sourceId, String url) {
+        if (url != null && papers.findFirstBySourceIdAndUrl(sourceId, url).isPresent()) {
+            throw new ApiException(HttpStatus.CONFLICT, "DUPLICATE_URL",
+                    "An article with this URL already exists in this feed.");
+        }
+    }
+
+    /** Rejects a manual add when another article in the same source has the same title (case-insensitive). */
+    private void rejectIfTitleExists(Long sourceId, String title) {
+        if (papers.findFirstBySourceIdAndTitleIgnoreCase(sourceId, title).isPresent()) {
+            throw new ApiException(HttpStatus.CONFLICT, "DUPLICATE_TITLE",
+                    "An article with this title already exists in this feed.");
+        }
     }
 
     /**

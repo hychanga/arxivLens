@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, HttpError } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { useUiStore } from "@/store/ui";
 
@@ -89,6 +89,17 @@ export default function AddArticleButton({ sourceId, sourceCode, onAdded }: Prop
     return () => document.removeEventListener("keydown", onKey);
   }, [open, mode]);
 
+  // Prefer a locale-aware message for known domain error codes (duplicate
+  // article); fall back to the backend's English message for anything else.
+  function errorMessage(err: unknown, fallback: string): string {
+    if (err instanceof HttpError) {
+      const code = err.payload?.code;
+      if (code === "DUPLICATE_URL") return t("feed.add_article_dup_url");
+      if (code === "DUPLICATE_TITLE") return t("feed.add_article_dup_title");
+    }
+    return err instanceof Error ? err.message : fallback;
+  }
+
   function resetForm() {
     setImportUrl("");
     setTitle("");
@@ -112,7 +123,7 @@ export default function AddArticleButton({ sourceId, sourceCode, onAdded }: Prop
       setOpen(false);
       onAdded?.();
     } catch (err) {
-      flash(err instanceof Error ? err.message : "Import failed", "error");
+      flash(errorMessage(err, "Import failed"), "error");
     } finally {
       setSubmitting(false);
     }
@@ -139,7 +150,7 @@ export default function AddArticleButton({ sourceId, sourceCode, onAdded }: Prop
       setOpen(false);
       onAdded?.();
     } catch (err) {
-      flash(err instanceof Error ? err.message : "Add failed", "error");
+      flash(errorMessage(err, "Add failed"), "error");
     } finally {
       setSubmitting(false);
     }
