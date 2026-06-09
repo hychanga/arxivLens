@@ -93,7 +93,7 @@ public class SecurityConfig {
                                 "/actuator/info"
                         ).permitAll()
                         // Workspace Gateway notification aggregation: authenticates via a
-                        // Google id_token in the X-Google-Id-Token header (verified inside
+                        // Google id_token in the X-Workspace-Id-Token header (verified inside
                         // the handler), not a JWT — so it's permitAll at the filter layer.
                         .requestMatchers(HttpMethod.GET, "/api/notifications").permitAll()
                         // External-cron triggers authenticate with a shared secret

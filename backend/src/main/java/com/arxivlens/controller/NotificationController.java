@@ -19,10 +19,12 @@ import java.util.Optional;
 
 /**
  * Notification feed for the Workspace Gateway. The Gateway calls this
- * server-side with the signed-in user's Google id_token in {@code X-Google-Id-Token}
+ * server-side with the signed-in user's Google id_token in {@code X-Workspace-Id-Token}
  * (no Authorization header, so the JWT filter is bypassed and this stays a
  * stateless read — no session is minted). Returns a plain JSON array; the
  * Gateway tags each item with its source and merges across apps.
+ * NB: avoid an {@code X-Google-*} header name — GCP strips that reserved prefix
+ * before the request reaches Cloud Run.
  *
  * <p>Degrades to an empty list on any verification problem so one app can never
  * break the aggregated feed.
@@ -47,7 +49,7 @@ public class NotificationController {
 
     @GetMapping
     public List<NotificationDto> list(
-            @RequestHeader(value = "X-Google-Id-Token", required = false) String idToken) {
+            @RequestHeader(value = "X-Workspace-Id-Token", required = false) String idToken) {
         if (idToken == null || idToken.isBlank()) return List.of();
 
         String email;
