@@ -2,11 +2,11 @@
 
 A curated paper feed for arXiv and Harvard Business Review with AI summaries, per-source keyword scoring, and on-demand translation into Traditional Chinese, Simplified Chinese, and Japanese.
 
-> **Live demo:** <https://arxivlens.vercel.app> · API: <https://arxivlens-backend.onrender.com/actuator/health>
+> **Live demo:** <https://arxivlens.vercel.app> · API: <https://arxivlens-backend-880984423210.asia-east1.run.app/actuator/health>
 >
 > Demo logins: `demo@arxivlens.local / demo123` · `admin@arxivlens.local / admin123`
 >
-> *(Hosted on Render Free — first request after 15 min idle takes ~30 s to wake.)*
+> *(Backend on Cloud Run with min-instances=0 — the first request after an idle period pays a brief cold start.)*
 
 ## What it does
 
@@ -26,7 +26,7 @@ A curated paper feed for arXiv and Harvard Business Review with AI summaries, pe
 | Backend  | Spring Boot 4.0.6 · Java 25 · Maven · Spring Security · JJWT |
 | Database | MySQL 8 (local dev via Docker) · TiDB Cloud Serverless (prod) |
 | AI       | Google Gemini 2.5 Flash via [AI Studio](https://aistudio.google.com) |
-| Hosting  | Vercel (frontend) · Render (backend) · TiDB Cloud (database) |
+| Hosting  | Vercel (frontend) · Google Cloud Run (backend, `asia-east1`) · TiDB Cloud (database) |
 
 ## Quick start (local)
 
@@ -56,7 +56,7 @@ Open <http://localhost:3000> and log in with `demo@arxivlens.local / demo123`.
 
 ## Deploy your own copy
 
-See **[DEPLOY.md](./DEPLOY.md)** for the full Vercel + Render + TiDB Cloud walkthrough (~30 min, all on free tiers).
+See **[DEPLOY.md](./DEPLOY.md)** for the full Vercel + Cloud Run + TiDB Cloud walkthrough (~30 min, on free tiers).
 
 ## Layout
 
@@ -82,7 +82,7 @@ arxivLens/
 │   │   └── schema.sql + data.sql       # dev-only schema bootstrap
 │   └── Dockerfile
 ├── docker-compose.yml            # MySQL (+ optional backend / frontend) for local dev
-├── render.yaml                   # Render Blueprint for prod backend
+├── cloudbuild.yaml               # Cloud Build CI — build + deploy backend image to Cloud Run on push to main
 ├── DEPLOY.md                     # Full deploy guide
 └── arxivLens-requirements.md     # Original product spec
 ```
@@ -104,7 +104,7 @@ All runtime config is environment-variable driven. The complete list:
 | `APP_CORS_ALLOWED_ORIGINS`    | Comma-separated allow-list for browser origins                          | `http://localhost:3000` |
 | `SCHEDULER_ENABLED`           | Auto-sync arXiv/HBR every 6 h                                           | `true` (prod) / `false` (dev) |
 | `SPRING_PROFILES_ACTIVE`      | `prod` switches off schema.sql + uses Hibernate `ddl-auto=update`       | dev profile             |
-| `PORT`                        | HTTP listen port (Render injects this automatically)                    | `8080`                  |
+| `PORT`                        | HTTP listen port (Cloud Run injects this automatically)                 | `8080`                  |
 
 ## Security note
 
