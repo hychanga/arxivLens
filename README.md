@@ -102,7 +102,7 @@ All runtime config is environment-variable driven. The complete list:
 | `APPLE_CLIENT_ID`             | Apple Services ID (token `aud`); blank → mock Apple sign-in. See DEPLOY.md | empty                 |
 | `GEMINI_MODEL`                | Model name                                                             | `gemini-2.5-flash`      |
 | `APP_CORS_ALLOWED_ORIGINS`    | Comma-separated allow-list for browser origins                          | `http://localhost:3000` |
-| `SCHEDULER_ENABLED`           | Auto-sync arXiv/HBR every 6 h                                           | `true` (prod) / `false` (dev) |
+| `SCHEDULER_ENABLED`           | In-process `@Scheduled` 6 h auto-sync. Off in prod — Cloud Run scales to zero, so GitHub Actions drives the cron (see DEPLOY.md §5) | `false`                 |
 | `SPRING_PROFILES_ACTIVE`      | `prod` switches off schema.sql + uses Hibernate `ddl-auto=update`       | dev profile             |
 | `PORT`                        | HTTP listen port (Cloud Run injects this automatically)                 | `8080`                  |
 
