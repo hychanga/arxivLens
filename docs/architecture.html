@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>arXivLens — 系統架構與部署</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+    color: #1f2933; font-size: 12px; line-height: 1.55; margin: 0;
+  }
+  h1 { font-size: 26px; margin: 0 0 4px; color: #0b3d91; }
+  h2 { font-size: 17px; margin: 26px 0 10px; color: #0b3d91;
+       border-bottom: 2px solid #d6e0f5; padding-bottom: 4px; }
+  h3 { font-size: 13px; margin: 16px 0 6px; color: #334e68; }
+  .subtitle { color: #627d98; font-size: 12px; margin: 0 0 2px; }
+  .meta { color: #829ab1; font-size: 10.5px; margin: 0 0 8px; }
+  p { margin: 6px 0; }
+  code { background: #eef2f7; padding: 1px 5px; border-radius: 4px;
+         font-family: "Cascadia Code", Consolas, monospace; font-size: 10.5px; color: #334e68; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 4px; font-size: 11px; }
+  th, td { border: 1px solid #d9e2ec; padding: 6px 9px; text-align: left; vertical-align: top; }
+  th { background: #f0f4fa; color: #243b53; font-weight: 600; }
+  tr:nth-child(even) td { background: #f9fbfd; }
+  .tag { display: inline-block; background: #0b3d91; color: #fff; border-radius: 4px;
+         padding: 1px 7px; font-size: 9.5px; margin-left: 6px; vertical-align: middle; }
+  .note { background: #fff8e6; border-left: 4px solid #f0b429; padding: 8px 12px;
+          border-radius: 4px; margin: 10px 0; font-size: 11px; }
+
+  /* ---- diagram ---- */
+  .diagram { width: 100%; margin: 6px 0 4px; }
+  .row { display: flex; justify-content: center; align-items: stretch; gap: 18px; margin: 10px 0; flex-wrap: wrap; }
+  .box {
+    border: 1.5px solid #486581; border-radius: 8px; padding: 9px 12px;
+    background: #fff; min-width: 150px; text-align: center;
+  }
+  .box .t { font-weight: 700; font-size: 12px; color: #102a43; }
+  .box .s { font-size: 9.8px; color: #627d98; margin-top: 2px; line-height: 1.35; }
+  .box .h { display:inline-block; font-size: 8.5px; color:#fff; padding:1px 6px; border-radius:3px; margin-top:5px; }
+  .vercel  { border-color:#000; background:#fafafa; } .vercel .h{ background:#000; }
+  .gcp     { border-color:#1a73e8; background:#f3f8ff; } .gcp .h{ background:#1a73e8; }
+  .tidb    { border-color:#d24a26; background:#fff6f3; } .tidb .h{ background:#d24a26; }
+  .ext     { border-color:#5b6b7b; background:#f7f9fb; border-style:dashed; } .ext .h{ background:#5b6b7b; }
+  .gh      { border-color:#24292e; background:#f6f8fa; } .gh .h{ background:#24292e; }
+  .arrow { text-align:center; color:#829ab1; font-size: 15px; margin: -4px 0; }
+  .arrow small { font-size: 9px; color:#9fb3c8; }
+  .group {
+    border: 1.5px dashed #9fb3c8; border-radius: 10px; padding: 6px 10px 10px; margin: 6px 0;
+    background: rgba(240,244,250,0.4);
+  }
+  .group .gl { font-size: 9.5px; color:#486581; font-weight:600; letter-spacing:.3px; text-transform:uppercase; margin-bottom:2px; }
+  .legend { font-size: 9.5px; color:#627d98; margin-top: 4px; }
+  ul { margin: 4px 0 6px; padding-left: 18px; }
+  li { margin: 2px 0; }
+  .small { font-size: 10.5px; color:#627d98; }
+  .footer { margin-top: 22px; border-top: 1px solid #d9e2ec; padding-top: 6px; color:#9fb3c8; font-size: 9.5px; }
+</style>
+</head>
+<body>
+
+<h1>arXivLens — 系統架構與部署位置</h1>
+<p class="subtitle">arXiv／HBR 論文聚合平台 · AI 摘要與多語翻譯</p>
+<p class="meta">產生日期：2026-06-14 · 環境：Production · 來源：repo 設定檔 + 部署紀錄</p>
+
+<h2>1. 系統總覽</h2>
+<p>
+arXivLens 採 <strong>前後端分離</strong> 架構：Next.js 前端部署於 Vercel，Spring Boot 後端容器化部署於 Google Cloud Run，
+資料庫使用 TiDB Cloud（MySQL 相容）。後端對外整合 arXiv／HBR 內容來源與 Google Gemini（AI 摘要與翻譯）、
+Resend（通知信）。定時抓取由 GitHub Actions 以 cron 觸發後端的 token 保護端點完成。
+</p>
+
+<h2>2. 架構圖</h2>
+<div class="diagram">
+
+  <div class="row">
+    <div class="box"><div class="t">使用者瀏覽器</div><div class="s">Web App（桌機／行動）</div></div>
+  </div>
+  <div class="arrow">│ &nbsp; HTTPS</div>
+
+  <div class="group">
+    <div class="gl">Vercel — 前端託管</div>
+    <div class="row">
+      <div class="box vercel">
+        <div class="t">Next.js 16 前端</div>
+        <div class="s">React 19 · TypeScript · Tailwind 4 · Zustand<br>App Router · JWT 存於 localStorage</div>
+        <div class="h">arxivlens.vercel.app</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow">│ &nbsp; REST <code>/api/*</code> · Bearer JWT &nbsp; <small>(NEXT_PUBLIC_API_URL → Cloud Run)</small></div>
+
+  <div class="group">
+    <div class="gl">Google Cloud Run — 後端託管（區域 asia-east1）</div>
+    <div class="row">
+      <div class="box gcp">
+        <div class="t">Spring Boot 4 後端</div>
+        <div class="s">Java 25 · Spring Security · JJWT · JPA<br>REST controllers · 同步服務 · AI client<br>min-instances=0 · no-cpu-throttling · 512Mi</div>
+        <div class="h">arxivlens-backend</div>
+      </div>
+    </div>
+    <div class="legend">Secret Manager 注入：DB 連線、JWT_SECRET、GEMINI/RESEND/CRON token、GOOGLE_CLIENT_ID</div>
+  </div>
+
+  <div class="row">
+    <div class="arrow">└──▶</div>
+    <div class="box tidb">
+      <div class="t">TiDB Cloud Serverless</div>
+      <div class="s">MySQL 相容 · 正式資料庫</div>
+      <div class="h">外部受管</div>
+    </div>
+    <div class="box ext">
+      <div class="t">Google Gemini</div>
+      <div class="s">gemini-2.5-flash<br>AI 摘要 / 翻譯</div>
+      <div class="h">外部 API</div>
+    </div>
+    <div class="box ext">
+      <div class="t">Resend</div>
+      <div class="s">同步完成通知信</div>
+      <div class="h">外部 API</div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="box ext">
+      <div class="t">arXiv API</div>
+      <div class="s">Atom feed（論文）</div>
+      <div class="h">外部來源</div>
+    </div>
+    <div class="box ext">
+      <div class="t">HBR / McKinsey</div>
+      <div class="s">RSS feed（文章）</div>
+      <div class="h">外部來源</div>
+    </div>
+    <div class="box gh">
+      <div class="t">GitHub Actions（cron）</div>
+      <div class="s">每 6 小時 POST 觸發<br><code>/api/cron/*-sync</code>（X-Cron-Token）</div>
+      <div class="h">排程器</div>
+    </div>
+  </div>
+
+</div>
+<p class="legend">
+  資料流：瀏覽器 → Vercel 前端 → Cloud Run 後端 → TiDB；後端另呼叫 Gemini／Resend，並由排程拉取 arXiv／HBR。
+  in-process <code>@Scheduled</code> 關閉（<code>SCHEDULER_ENABLED=false</code>），改由 GitHub Actions 觸發，避免 scale-to-zero 漏跑。
+</p>
+
+<h2>3. 部署位置一覽</h2>
+<table>
+  <tr><th>元件</th><th>平台 / 位置</th><th>識別 / URL</th><th>備註</th></tr>
+  <tr>
+    <td><strong>前端</strong><span class="tag">Vercel</span></td>
+    <td>Vercel（CDN／Edge）</td>
+    <td><code>https://arxivlens.vercel.app</code></td>
+    <td>Next.js 16 · 推送 main 自動部署</td>
+  </tr>
+  <tr>
+    <td><strong>後端</strong><span class="tag">Cloud Run</span></td>
+    <td>GCP Cloud Run · 區域 <code>asia-east1</code></td>
+    <td><code>https://arxivlens-backend-880984423210.asia-east1.run.app</code></td>
+    <td>服務 <code>arxivlens-backend</code> · 專案 <code>sylvan-faculty-438200-p5</code></td>
+  </tr>
+  <tr>
+    <td><strong>資料庫</strong><span class="tag">TiDB</span></td>
+    <td>TiDB Cloud Serverless（外部受管）</td>
+    <td>JDBC（Secret Manager 注入）</td>
+    <td>MySQL 相容；自 Render 遷移後資料未變動</td>
+  </tr>
+  <tr>
+    <td><strong>容器映像</strong></td>
+    <td>Artifact Registry（asia-east1）</td>
+    <td><code>…/cloud-run-source-deploy/arxivlens-backend</code></td>
+    <td>保留最新 3 版（清理政策）</td>
+  </tr>
+  <tr>
+    <td><strong>CI / 建置</strong></td>
+    <td>Cloud Build（trigger <code>global</code>）</td>
+    <td>trigger <code>arxivlens-backend-main</code></td>
+    <td><code>^main$</code> · config <code>cloudbuild.yaml</code></td>
+  </tr>
+  <tr>
+    <td><strong>排程同步</strong><span class="tag">GitHub</span></td>
+    <td>GitHub Actions</td>
+    <td><code>.github/workflows/sync-cron.yml</code></td>
+    <td>每 6 小時（00/06/12/18 UTC）</td>
+  </tr>
+  <tr>
+    <td><strong>機密</strong></td>
+    <td>GCP Secret Manager</td>
+    <td>前綴 <code>ARXIVLENS_</code></td>
+    <td>映射為服務 env vars</td>
+  </tr>
+</table>
+
+<h2>4. CI/CD 與部署流程</h2>
+<div class="row" style="justify-content:flex-start; gap:8px;">
+  <div class="box gh" style="min-width:120px"><div class="t">push → main</div><div class="s">backend/** 變更</div></div>
+  <div class="arrow" style="margin:auto 0">▶</div>
+  <div class="box gcp" style="min-width:130px"><div class="t">Cloud Build</div><div class="s">build → push → deploy → prune</div></div>
+  <div class="arrow" style="margin:auto 0">▶</div>
+  <div class="box gcp" style="min-width:130px"><div class="t">Cloud Run</div><div class="s">新 revision 上線</div></div>
+</div>
+<ul>
+  <li>Cloud Build 步驟：<code>docker build</code>（<code>backend/Dockerfile</code>）→ <code>push</code>（Artifact Registry）→ <code>gcloud run deploy</code> → 修剪舊 revision（保留 3）。</li>
+  <li>部署步驟<strong>只傳 <code>--image</code></strong>，因此<strong>保留既有 env／Secret 綁定</strong>；執行期設定一律以 <code>gcloud run services update</code> 帶外管理，不放進 CI。</li>
+  <li>前端：推送 main 由 Vercel 自動建置部署。</li>
+</ul>
+
+<h2>5. 執行期設定（Cloud Run）</h2>
+<table>
+  <tr><th>類型</th><th>項目</th></tr>
+  <tr><td>部署參數</td><td><code>--no-cpu-throttling</code>（背景同步在 HTTP 回應後續跑）· <code>--min-instances=0</code> · <code>--allow-unauthenticated</code> · <code>--memory=512Mi</code></td></tr>
+  <tr><td>非機密 env</td><td><code>SPRING_PROFILES_ACTIVE=prod</code> · <code>GEMINI_MODEL=gemini-2.5-flash</code> · <code>SCHEDULER_ENABLED=false</code> · <code>APP_CORS_ALLOWED_ORIGINS / APP_FRONTEND_BASE_URL=https://arxivlens.vercel.app</code> · <code>SYNC_NOTIFY_EMAIL</code></td></tr>
+  <tr><td>機密（Secret Manager）</td><td>TIDB_URL / USERNAME / PASSWORD · JWT_SECRET · GEMINI_API_KEY · RESEND_API_KEY · CRON_TOKEN · GOOGLE_CLIENT_ID</td></tr>
+</table>
+
+<h2>6. 技術堆疊</h2>
+<table>
+  <tr><th>層級</th><th>技術</th></tr>
+  <tr><td>前端</td><td>Next.js 16（App Router）· React 19 · TypeScript · Tailwind 4 · Zustand · Node 22</td></tr>
+  <tr><td>後端</td><td>Spring Boot 4.0.6 · Java 25 · Maven · Spring Security · JJWT · Spring Data JPA · Actuator</td></tr>
+  <tr><td>資料庫</td><td>TiDB Cloud Serverless（prod）· MySQL 8（本機 Docker 開發）</td></tr>
+  <tr><td>AI</td><td>Google Gemini 2.5 Flash（摘要 / 多語翻譯 zh-TW · zh-CN · ja）</td></tr>
+  <tr><td>託管</td><td>Vercel（前端）· GCP Cloud Run（後端）· TiDB Cloud（DB）</td></tr>
+  <tr><td>CI/CD · 排程 · 通知</td><td>Cloud Build · GitHub Actions（cron）· Resend（Email）</td></tr>
+</table>
+
+<div class="note">
+  <strong>備註：</strong>後端已於 2026-06-07 由 Render 遷移至 Google Cloud Run，Render 服務已停用。
+  repo 內 <code>README.md</code> 部分章節仍提及 Render，屬於尚未更新的舊文件；本架構圖以實際部署設定為準。
+</div>
+
+<div class="footer">arXivLens 系統架構文件 · 依 repo 設定檔（cloudbuild.yaml、docker-compose.yml、sync-cron.yml、pom.xml）與部署紀錄產生</div>
+
+</body>
+</html>
