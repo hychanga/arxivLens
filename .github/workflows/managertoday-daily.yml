@@ -1,0 +1,48 @@
+name: Manager Today daily ingest
+
+# 經理人雜誌 (Manager Today) has no usable RSS feed, so its articles come from the
+# user's daily "每日學管理電子報" Gmail newsletter. This workflow reads that email
+# over Gmail IMAP, scrapes the linked articles, and posts them into arxivLens via
+# the manual-add API. Server-side de-dup makes re-runs safe.
+#
+# Setup (one time) — Settings → Secrets and variables → Actions → New repository secret:
+#   GMAIL_USER          your Gmail address (e.g. hychanga@gmail.com)
+#   GMAIL_APP_PASSWORD  a Gmail App Password (16 chars). Requires 2-Step
+#                       Verification ON, then create at
+#                       https://myaccount.google.com/apppasswords . IMAP must be
+#                       enabled in Gmail → Settings → Forwarding and POP/IMAP.
+#   ARXIVLENS_EMAIL     your arxivLens login email
+#   ARXIVLENS_PASSWORD  your arxivLens login password
+# Optional repo *variable* BACKEND_URL if the backend ever moves.
+
+on:
+  schedule:
+    # The newsletter lands ~00:01 UTC; run at 01:00 UTC. GitHub may delay a few min.
+    - cron: "0 1 * * *"
+  workflow_dispatch: {} # run by hand from the Actions tab
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Read newsletter and ingest
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          ARXIVLENS_EMAIL: ${{ secrets.ARXIVLENS_EMAIL }}
+          ARXIVLENS_PASSWORD: ${{ secrets.ARXIVLENS_PASSWORD }}
+          ARXIVLENS_API: ${{ vars.BACKEND_URL && format('{0}/api', vars.BACKEND_URL) || 'https://arxivlens-backend-880984423210.asia-east1.run.app/api' }}
+          MT_SOURCE_ID: "5880001"
+          MT_DAYS: "2"
+        run: |
+          if [ -z "$GMAIL_APP_PASSWORD" ] || [ -z "$ARXIVLENS_PASSWORD" ]; then
+            echo "::warning::Required secrets not set (GMAIL_APP_PASSWORD / ARXIVLENS_PASSWORD) — skipping. See this workflow's header for setup."
+            exit 0
+          fi
+          python scripts/managertoday_daily.py
