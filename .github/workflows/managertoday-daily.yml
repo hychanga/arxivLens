@@ -19,7 +19,12 @@ on:
   schedule:
     # The newsletter lands ~00:01 UTC; run at 01:00 UTC. GitHub may delay a few min.
     - cron: "0 1 * * *"
-  workflow_dispatch: {} # run by hand from the Actions tab
+  workflow_dispatch: # run by hand from the Actions tab
+    inputs:
+      days:
+        description: "Look-back window in days (backfill: e.g. 7 to catch older issues)"
+        required: false
+        default: "2"
 
 jobs:
   ingest:
@@ -39,7 +44,7 @@ jobs:
           ARXIVLENS_PASSWORD: ${{ secrets.ARXIVLENS_PASSWORD }}
           ARXIVLENS_API: ${{ vars.BACKEND_URL && format('{0}/api', vars.BACKEND_URL) || 'https://arxivlens-backend-880984423210.asia-east1.run.app/api' }}
           MT_SOURCE_ID: "5880001"
-          MT_DAYS: "2"
+          MT_DAYS: ${{ inputs.days || '2' }}
         run: |
           if [ -z "$GMAIL_APP_PASSWORD" ] || [ -z "$ARXIVLENS_PASSWORD" ]; then
             echo "::warning::Required secrets not set (GMAIL_APP_PASSWORD / ARXIVLENS_PASSWORD) — skipping. See this workflow's header for setup."
