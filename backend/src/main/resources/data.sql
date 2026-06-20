@@ -13,7 +13,8 @@ INSERT IGNORE INTO data_sources (id, code, name, description, is_enabled, displa
   (1, 'arxiv',          'arXiv',                    'Computer science & physics preprints — synced every 6 hours.', 1, 1, NOW(6)),
   (2, 'hbr',            '哈佛商業評論',              'Management & leadership insights via RSS.',                    1, 2, NOW(6)),
   (3, 'businessweekly', '商業週刊',                  '搜尋商業週刊網站，依關鍵字抓取最新文章列表。',                     1, 3, NOW(6)),
-  (4, 'mckinsey',       'McKinsey Quarterly',       'McKinsey Insights & Quarterly articles via RSS — synced daily.', 1, 4, NOW(6));
+  (4, 'mckinsey',       'McKinsey Quarterly',       'McKinsey Insights & Quarterly articles via RSS — synced daily.', 1, 4, NOW(6)),
+  (5, 'managertoday',   '經理人雜誌',                '經理人 Manager Today 每日學管理電子報精選文章（透過 Gmail 日報擷取）。', 1, 5, NOW(6));
 
 -- ----- topics -----
 -- arXiv categories
