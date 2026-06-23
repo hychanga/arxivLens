@@ -9,6 +9,7 @@ import { useUiStore } from "@/store/ui";
 import { parseAuthors, fmtDate, fmtSize } from "@/lib/format";
 import { openCachedPdf } from "@/lib/pdf";
 import { useT } from "@/lib/i18n";
+import { NoteView } from "@/components/RichNoteEditor";
 
 export default function LibraryPage() {
   const allItems = useDownloadsStore((s) => s.items);
@@ -91,9 +92,7 @@ export default function LibraryPage() {
                       <span>{d.paper.externalId}</span>
                     </div>
                     {note && (
-                      <p className="mt-2 text-xs whitespace-pre-line rounded bg-yellow-50 dark:bg-yellow-900/20 text-yellow-900 dark:text-yellow-100 p-2">
-                        {note}
-                      </p>
+                      <NoteView note={note} className="mt-2 text-xs rounded bg-yellow-50 dark:bg-yellow-900/20 text-yellow-900 dark:text-yellow-100 p-2" />
                     )}
                     <div className="mt-3 flex gap-2 text-xs">
                       <button

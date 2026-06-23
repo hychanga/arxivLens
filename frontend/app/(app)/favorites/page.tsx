@@ -10,6 +10,7 @@ import { useUiStore } from "@/store/ui";
 import { fmtDate } from "@/lib/format";
 import { openCachedPdf } from "@/lib/pdf";
 import { useT } from "@/lib/i18n";
+import { RichNoteEditor, NoteView } from "@/components/RichNoteEditor";
 
 export default function FavoritesPage() {
   const allItems = useFavoritesStore((s) => s.items);
@@ -41,7 +42,6 @@ export default function FavoritesPage() {
   const t = useT();
 
   const [editingNote, setEditingNote] = useState<number | null>(null);
-  const [noteDraft, setNoteDraft] = useState("");
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [generatingFor, setGeneratingFor] = useState<number | null>(null);
 
@@ -121,36 +121,19 @@ export default function FavoritesPage() {
                 <h3 className="font-medium leading-tight">{f.paper.title}</h3>
 
                 {f.note && editingNote !== f.id && (
-                  <p className="mt-2 text-sm whitespace-pre-line bg-white/60 dark:bg-black/20 rounded p-2">{f.note}</p>
+                  <NoteView note={f.note} className="mt-2 text-sm bg-white/60 dark:bg-black/20 rounded p-2" />
                 )}
 
                 {editingNote === f.id && (
-                  <div className="mt-2 space-y-2">
-                    <textarea
-                      value={noteDraft}
-                      onChange={(e) => setNoteDraft(e.target.value)}
-                      rows={4}
-                      className="w-full rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 p-2 text-sm"
-                    />
-                    <div className="flex gap-2 text-sm">
-                      <button
-                        onClick={async () => {
-                          await updateNote(f.id, noteDraft);
-                          setEditingNote(null);
-                          flash("Note saved", "success");
-                        }}
-                        className="rounded bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 text-white px-3 py-1"
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={() => setEditingNote(null)}
-                        className="rounded bg-zinc-100 dark:bg-zinc-800 px-3 py-1"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
+                  <RichNoteEditor
+                    initialHtml={f.note ?? ""}
+                    onCancel={() => setEditingNote(null)}
+                    onSave={async (html) => {
+                      await updateNote(f.id, html);
+                      setEditingNote(null);
+                      flash("Note saved", "success");
+                    }}
+                  />
                 )}
 
                 {f.summary && (
@@ -245,10 +228,7 @@ export default function FavoritesPage() {
                         : t("favorites.generate_summary")}
                   </button>
                   <button
-                    onClick={() => {
-                      setEditingNote(f.id);
-                      setNoteDraft(f.note ?? "");
-                    }}
+                    onClick={() => setEditingNote(f.id)}
                     className="rounded border border-zinc-300 dark:border-zinc-700 px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                   >
                     {f.note ? t("favorites.edit_note") : t("favorites.add_note")}

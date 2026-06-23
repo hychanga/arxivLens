@@ -15,11 +15,11 @@ public final class FavoriteDtos {
 
     public record CreateFavoriteRequest(
             @NotNull Long paperId,
-            @Size(max = 8000) String note
+            @Size(max = 20000) String note
     ) {}
 
     public record UpdateNoteRequest(
-            @Size(max = 8000) String note
+            @Size(max = 20000) String note
     ) {}
 
     public record FavoriteView(
