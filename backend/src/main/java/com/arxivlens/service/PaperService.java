@@ -119,7 +119,11 @@ public class PaperService {
         String safeTopicCode = (topicCode == null || topicCode.isBlank()) ? null : topicCode;
         PageRequest pageable = PageRequest.of(Math.max(0, page), safeSize, Sort.by(Sort.Direction.DESC, "publishedAt"));
         if (safeQ != null) {
-            return papers.findFeedSearch(sourceId, since, safeTopicCode, safeQ, pageable);
+            // Native query has ORDER BY hardcoded — pass unsorted PageRequest so Spring Data
+            // doesn't try to append a sort clause using JPA property names (which don't exist
+            // in native SQL and would cause a runtime error).
+            PageRequest nativePageable = PageRequest.of(Math.max(0, page), safeSize);
+            return papers.findFeedSearch(sourceId, since, safeTopicCode, safeQ, nativePageable);
         }
         return papers.findFeed(sourceId, since, safeTopicCode, pageable);
     }

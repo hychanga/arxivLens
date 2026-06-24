@@ -83,16 +83,35 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
             Pageable pageable
     );
 
-    @Query("""
-            SELECT p FROM Paper p
-            WHERE p.sourceId = :sourceId
-              AND p.publishedAt >= :since
-              AND (:topicCode IS NULL
-                   OR p.topicCode = :topicCode
-                   OR p.categories LIKE CONCAT('%,', :topicCode, ',%'))
-              AND (LOWER(p.title) LIKE LOWER(CONCAT('%', :q, '%'))
-                   OR LOWER(p.abstractText) LIKE LOWER(CONCAT('%', :q, '%')))
-            """)
+    /**
+     * abstractText is @Lob (CLOB), which Hibernate 7's type checker rejects inside LOWER()
+     * in HQL. Using a native SQL query sidesteps that — MySQL/TiDB LIKE is case-insensitive
+     * by default for utf8mb4_general_ci, so no explicit LOWER is needed.
+     */
+    @Query(
+        value = """
+                SELECT * FROM papers
+                WHERE source_id = :sourceId
+                  AND published_at >= :since
+                  AND (:topicCode IS NULL
+                       OR topic_code = :topicCode
+                       OR categories LIKE CONCAT('%,', :topicCode, ',%'))
+                  AND (title LIKE CONCAT('%', :q, '%')
+                       OR abstract_text LIKE CONCAT('%', :q, '%'))
+                ORDER BY published_at DESC
+                """,
+        countQuery = """
+                SELECT COUNT(*) FROM papers
+                WHERE source_id = :sourceId
+                  AND published_at >= :since
+                  AND (:topicCode IS NULL
+                       OR topic_code = :topicCode
+                       OR categories LIKE CONCAT('%,', :topicCode, ',%'))
+                  AND (title LIKE CONCAT('%', :q, '%')
+                       OR abstract_text LIKE CONCAT('%', :q, '%'))
+                """,
+        nativeQuery = true
+    )
     Page<Paper> findFeedSearch(
             @Param("sourceId") Long sourceId,
             @Param("since") Instant since,
