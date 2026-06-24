@@ -164,6 +164,8 @@ const dict: Record<Locale, Record<string, string>> = {
     "note.italic": "Italic",
     "note.underline": "Underline",
     "note.clear_format": "Clear formatting",
+    "note.custom_color": "Custom color…",
+    "note.custom_highlight": "Custom highlight…",
     "note.placeholder": "Write a note…",
     "favorites.confirm_remove_title": "Remove from favorites?",
     "favorites.confirm_remove_message":
@@ -399,6 +401,8 @@ const dict: Record<Locale, Record<string, string>> = {
     "note.italic": "斜體",
     "note.underline": "底線",
     "note.clear_format": "清除格式",
+    "note.custom_color": "自訂色彩…",
+    "note.custom_highlight": "自訂底色…",
     "note.placeholder": "輸入筆記…",
     "favorites.confirm_remove_title": "確定要移除這筆收藏？",
     "favorites.confirm_remove_message":
@@ -632,6 +636,8 @@ const dict: Record<Locale, Record<string, string>> = {
     "note.italic": "斜体",
     "note.underline": "下划线",
     "note.clear_format": "清除格式",
+    "note.custom_color": "自定义颜色…",
+    "note.custom_highlight": "自定义底色…",
     "note.placeholder": "输入笔记…",
     "favorites.confirm_remove_title": "确定要移除该收藏？",
     "favorites.confirm_remove_message":
@@ -865,6 +871,8 @@ const dict: Record<Locale, Record<string, string>> = {
     "note.italic": "斜体",
     "note.underline": "下線",
     "note.clear_format": "書式をクリア",
+    "note.custom_color": "カスタムカラー…",
+    "note.custom_highlight": "カスタムハイライト…",
     "note.placeholder": "メモを入力…",
     "favorites.confirm_remove_title": "お気に入りから削除しますか？",
     "favorites.confirm_remove_message":
@@ -1101,6 +1109,8 @@ const dict: Record<Locale, Record<string, string>> = {
     "note.italic": "Kursiv",
     "note.underline": "Unterstrichen",
     "note.clear_format": "Formatierung entfernen",
+    "note.custom_color": "Benutzerdefinierte Farbe…",
+    "note.custom_highlight": "Benutzerdefinierte Hervorhebung…",
     "note.placeholder": "Notiz schreiben…",
     "favorites.confirm_remove_title": "Aus Favoriten entfernen?",
     "favorites.confirm_remove_message":

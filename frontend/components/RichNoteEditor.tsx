@@ -72,6 +72,12 @@ export function RichNoteEditor({
   const [saving, setSaving] = useState(false);
   const [openMenu, setOpenMenu] = useState<"font" | "size" | null>(null);
 
+  // Refs for hidden <input type="color"> elements
+  const textColorInputRef = useRef<HTMLInputElement>(null);
+  const highlightInputRef = useRef<HTMLInputElement>(null);
+  // Saved selection range — restored after the native color picker blurs the editor
+  const savedRangeRef = useRef<Range | null>(null);
+
   // Seed the editor once on mount. Uncontrolled by design — letting React
   // re-render the contentEditable's children would fight the browser's caret.
   useEffect(() => {
@@ -99,6 +105,25 @@ export function RichNoteEditor({
     }
   }
 
+  /** Saves the current selection so it can be restored after the color picker
+   *  dialog steals focus from the contenteditable. Call on mousedown. */
+  function saveSelection() {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+    }
+  }
+
+  /** Restores the saved selection and re-focuses the editor. */
+  function restoreSelection() {
+    ref.current?.focus();
+    const sel = window.getSelection();
+    if (sel && savedRangeRef.current) {
+      sel.removeAllRanges();
+      sel.addRange(savedRangeRef.current);
+    }
+  }
+
   async function save() {
     const el = ref.current;
     if (!el) return;
@@ -118,6 +143,14 @@ export function RichNoteEditor({
 
   const btn =
     "rounded border border-zinc-300 dark:border-zinc-700 px-2 py-1 text-sm leading-none hover:bg-zinc-100 dark:hover:bg-zinc-800";
+
+  const swatchBtn = "h-4 w-4 rounded-full border border-zinc-300 dark:border-zinc-600";
+  const pickerBtnBase =
+    "h-4 w-4 border border-dashed border-zinc-400 dark:border-zinc-500 " +
+    "text-zinc-400 dark:text-zinc-500 text-[9px] leading-none flex items-center justify-center " +
+    "hover:border-zinc-600 dark:hover:border-zinc-300 hover:text-zinc-600 dark:hover:text-zinc-300";
+  const pickerBtn = `${pickerBtnBase} rounded-full`;
+  const highlightPickerBtn = `${pickerBtnBase} rounded-sm`;
 
   return (
     <div className="mt-2 space-y-2">
@@ -176,20 +209,42 @@ export function RichNoteEditor({
 
         <span className="mx-0.5 h-5 w-px bg-zinc-300 dark:bg-zinc-700" />
 
-        {/* Text colour */}
+        {/* Text colour — preset swatches + native color picker */}
         <span className="flex items-center gap-0.5" title={t("note.text_color")}>
           <span className="text-xs text-zinc-500">A</span>
           {TEXT_COLORS.map((c) => (
             <button key={c} type="button" aria-label={`${t("note.text_color")} ${c}`}
-              className="h-4 w-4 rounded-full border border-zinc-300 dark:border-zinc-600"
+              className={swatchBtn}
               style={{ backgroundColor: c }}
               onMouseDown={keepFocus} onClick={() => exec("foreColor", c)} />
           ))}
+          {/* Hidden native color picker */}
+          <input
+            ref={textColorInputRef}
+            type="color"
+            className="sr-only"
+            defaultValue="#000000"
+            onChange={(e) => {
+              restoreSelection();
+              document.execCommand("styleWithCSS", false, "true");
+              document.execCommand("foreColor", false, e.target.value);
+              setEmpty(!ref.current?.textContent?.trim());
+            }}
+          />
+          <button
+            type="button"
+            title={t("note.custom_color")}
+            className={pickerBtn}
+            onMouseDown={saveSelection}
+            onClick={() => textColorInputRef.current?.click()}
+          >
+            +
+          </button>
         </span>
 
         <span className="mx-0.5 h-5 w-px bg-zinc-300 dark:bg-zinc-700" />
 
-        {/* Highlight */}
+        {/* Highlight — preset swatches + native color picker */}
         <span className="flex items-center gap-0.5" title={t("note.highlight")}>
           <span className="text-xs text-zinc-500">▒</span>
           {HIGHLIGHTS.map((c) => (
@@ -198,6 +253,29 @@ export function RichNoteEditor({
               style={{ backgroundColor: c }}
               onMouseDown={keepFocus} onClick={() => applyHighlight(c)} />
           ))}
+          {/* Hidden native color picker */}
+          <input
+            ref={highlightInputRef}
+            type="color"
+            className="sr-only"
+            defaultValue="#ffff00"
+            onChange={(e) => {
+              restoreSelection();
+              document.execCommand("styleWithCSS", false, "true");
+              if (!document.execCommand("hiliteColor", false, e.target.value)) {
+                document.execCommand("backColor", false, e.target.value);
+              }
+            }}
+          />
+          <button
+            type="button"
+            title={t("note.custom_highlight")}
+            className={highlightPickerBtn}
+            onMouseDown={saveSelection}
+            onClick={() => highlightInputRef.current?.click()}
+          >
+            +
+          </button>
         </span>
 
         <span className="mx-0.5 h-5 w-px bg-zinc-300 dark:bg-zinc-700" />
