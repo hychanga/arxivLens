@@ -172,7 +172,7 @@ public final class HtmlExtractor {
     }
 
     private static final Pattern PUBLISHER_CHROME_SUFFIX = Pattern.compile(
-            "\\s*[|｜\\-—–]\\s*哈佛商業評論[^\\r\\n]*$");
+            "\\s*[|｜\\-—–]\\s*(?:哈佛商業評論|數位時代|商周|商業周刊)[^\\r\\n]*$");
 
     private static Instant pickPublishedAt(String html) {
         for (Pattern p : PUBLISHED_PATTERNS) {
@@ -228,12 +228,24 @@ public final class HtmlExtractor {
         }
     }
 
+    /**
+     * Minimum cleaned-text length for a container to be considered the "real"
+     * article body. BW (and other news sites) sometimes have a micro {@code <article>}
+     * tag with nothing but a {@code <time>} element — if we stopped there we'd
+     * emit empty content. Falling through to {@code <main>} or {@code <body>}
+     * recovers the actual text.
+     */
+    private static final int MIN_CONTENT_LENGTH = 200;
+
     private static String pickContent(String html, String baseUrl) {
-        String raw = firstGroup(ARTICLE_TAG, html);
-        if (raw == null) raw = firstGroup(MAIN_TAG, html);
-        if (raw == null) raw = firstGroup(BODY_TAG, html);
-        if (raw == null) raw = html;
-        return cleanText(raw, baseUrl);
+        for (Pattern container : List.of(ARTICLE_TAG, MAIN_TAG, BODY_TAG)) {
+            String raw = firstGroup(container, html);
+            if (raw != null) {
+                String cleaned = cleanText(raw, baseUrl);
+                if (cleaned.length() >= MIN_CONTENT_LENGTH) return cleaned;
+            }
+        }
+        return cleanText(html, baseUrl);
     }
 
     private static String cleanText(String htmlFragment, String baseUrl) {
