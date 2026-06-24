@@ -1079,11 +1079,11 @@ const dict: Record<Locale, Record<string, string>> = {
     "favorites.count": "{n} Eintrag/Einträge",
     "favorites.download_all": "Alle herunterladen",
     "favorites.downloading": "Lade herunter…",
-    “favorites.empty”: “Noch keine Favoriten. Speichere Beiträge aus „Neueste”.”,
-    “favorites.empty_in_source”:
-      “Keine Favoriten für {source}. Wechsle die Quelle, um andere Favoriten zu sehen.”,
-    “favorites.empty_search”: “Keine Favoriten entsprechen deiner Suche.”,
-    “favorites.preview”: “Vorschau”,
+    "favorites.empty": "Noch keine Favoriten. Speichere Beiträge aus „Neueste”.",
+    "favorites.empty_in_source":
+      "Keine Favoriten für {source}. Wechsle die Quelle, um andere Favoriten zu sehen.",
+    "favorites.empty_search": "Keine Favoriten entsprechen deiner Suche.",
+    "favorites.preview": "Vorschau",
     "favorites.open_cached": "Cache öffnen",
     "favorites.download_pdf": "PDF herunterladen",
     "favorites.generate_summary": "Zusammenfassung erstellen",
