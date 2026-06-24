@@ -181,14 +181,24 @@ export default function FeedPage() {
           })}
         </div>
 
-        <div className="flex items-center gap-1.5 ml-auto">
+        <div className="flex items-center ml-auto relative">
           <input
-            type="search"
+            type="text"
             value={localQ}
             onChange={(e) => setLocalQ(e.target.value)}
             placeholder={t("feed.search_placeholder")}
-            className="rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-2 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-500 w-44"
+            className="rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 pl-2 pr-6 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-500 w-44"
           />
+          {localQ && (
+            <button
+              type="button"
+              onClick={() => setLocalQ("")}
+              aria-label="Clear search"
+              className="absolute right-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 leading-none"
+            >
+              ✕
+            </button>
+          )}
         </div>
 
         {/* Manual paste is for sources where auto-sync can't get the full
