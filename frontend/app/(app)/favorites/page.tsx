@@ -10,6 +10,7 @@ import { useUiStore } from "@/store/ui";
 import { fmtDate } from "@/lib/format";
 import { openCachedPdf } from "@/lib/pdf";
 import { useT } from "@/lib/i18n";
+import { highlight } from "@/lib/highlight";
 import { RichNoteEditor, NoteView } from "@/components/RichNoteEditor";
 
 export default function FavoritesPage() {
@@ -44,12 +45,23 @@ export default function FavoritesPage() {
   const [editingNote, setEditingNote] = useState<number | null>(null);
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [generatingFor, setGeneratingFor] = useState<number | null>(null);
+  const [searchQ, setSearchQ] = useState("");
 
   // Per-source view: Favorites of arXiv != Favorites of HBR. Switch the top source tab to flip.
   const items = useMemo(
     () => (currentSourceId == null ? allItems : allItems.filter((f) => f.paper.sourceId === currentSourceId)),
     [allItems, currentSourceId]
   );
+
+  const filteredItems = useMemo(() => {
+    const q = searchQ.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter(
+      (f) =>
+        f.paper.title?.toLowerCase().includes(q) ||
+        f.paper.abstract?.toLowerCase().includes(q)
+    );
+  }, [items, searchQ]);
 
   const cachedPaperIds = new Set(downloads.map((d) => d.paper.id));
 
@@ -83,26 +95,47 @@ export default function FavoritesPage() {
           {t("favorites.heading")}{currentSource ? <span className="ml-2 text-sm font-normal text-zinc-500">· {currentSource.name}</span> : null}
         </h1>
         <span className="text-sm text-zinc-500">{t("favorites.count", { n: items.length })}</span>
+        <div className="flex items-center ml-auto relative">
+          <input
+            type="text"
+            value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)}
+            placeholder={t("feed.search_placeholder")}
+            className="rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 pl-2 pr-6 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-500 w-44"
+          />
+          {searchQ && (
+            <button
+              type="button"
+              onClick={() => setSearchQ("")}
+              aria-label="Clear search"
+              className="absolute right-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 leading-none"
+            >
+              ✕
+            </button>
+          )}
+        </div>
         {downloadable.length > 0 && (
           <button
             onClick={handleDownloadAll}
             disabled={downloadingAll}
-            className="ml-auto rounded-md bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 text-white px-3 py-1.5 text-sm disabled:opacity-50"
+            className="rounded-md bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 text-white px-3 py-1.5 text-sm disabled:opacity-50"
           >
             {downloadingAll ? t("favorites.downloading") : t("favorites.download_all")}
           </button>
         )}
       </div>
 
-      {items.length === 0 ? (
+      {filteredItems.length === 0 ? (
         <p className="text-sm text-zinc-500">
           {allItems.length === 0
             ? t("favorites.empty")
+            : searchQ.trim()
+            ? t("favorites.empty_search")
             : t("favorites.empty_in_source", { source: currentSource?.name ?? "—" })}
         </p>
       ) : (
         <ul className="space-y-3">
-          {items.map((f) => {
+          {filteredItems.map((f) => {
             const cached = cachedPaperIds.has(f.paper.id);
             return (
               <li
@@ -118,7 +151,7 @@ export default function FavoritesPage() {
                   {f.note && <span className="rounded bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200 px-2 py-0.5">note</span>}
                   {f.summary && <span className="rounded bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200 px-2 py-0.5">AI summary</span>}
                 </div>
-                <h3 className="font-medium leading-tight">{f.paper.title}</h3>
+                <h3 className="font-medium leading-tight">{highlight(f.paper.title, searchQ)}</h3>
 
                 {f.note && editingNote !== f.id && (
                   <NoteView note={f.note} className="mt-2 text-sm bg-white/60 dark:bg-black/20 rounded p-2" />
