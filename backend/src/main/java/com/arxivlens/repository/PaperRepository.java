@@ -84,6 +84,24 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
     );
 
     @Query("""
+            SELECT p FROM Paper p
+            WHERE p.sourceId = :sourceId
+              AND p.publishedAt >= :since
+              AND (:topicCode IS NULL
+                   OR p.topicCode = :topicCode
+                   OR p.categories LIKE CONCAT('%,', :topicCode, ',%'))
+              AND (LOWER(p.title) LIKE LOWER(CONCAT('%', :q, '%'))
+                   OR LOWER(p.abstractText) LIKE LOWER(CONCAT('%', :q, '%')))
+            """)
+    Page<Paper> findFeedSearch(
+            @Param("sourceId") Long sourceId,
+            @Param("since") Instant since,
+            @Param("topicCode") String topicCode,
+            @Param("q") String q,
+            Pageable pageable
+    );
+
+    @Query("""
             SELECT p.topicCode AS topicCode, FUNCTION('DATE_FORMAT', p.publishedAt, '%Y-%m') AS yearMonth, COUNT(p) AS total
             FROM Paper p
             WHERE p.sourceId = :sourceId AND p.publishedAt >= :since

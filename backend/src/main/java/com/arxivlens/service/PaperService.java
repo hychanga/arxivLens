@@ -93,7 +93,7 @@ public class PaperService {
      */
     private static final int MAX_FEED_DAYS = 3650;
 
-    public Page<Paper> findFeed(String sourceCode, Integer days, String topicCode, int page, int size) {
+    public Page<Paper> findFeed(String sourceCode, Integer days, String topicCode, String q, int page, int size) {
         long sourceId = sources.findByCode(sourceCode)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Unknown source: " + sourceCode))
                 .getId();
@@ -115,12 +115,13 @@ public class PaperService {
                 ? Instant.EPOCH
                 : Instant.now().minus(safeDays, ChronoUnit.DAYS);
         int safeSize = Math.min(100, Math.max(1, size));
-        return papers.findFeed(
-                sourceId,
-                since,
-                (topicCode == null || topicCode.isBlank()) ? null : topicCode,
-                PageRequest.of(Math.max(0, page), safeSize, Sort.by(Sort.Direction.DESC, "publishedAt"))
-        );
+        String safeQ = (q == null || q.isBlank()) ? null : q.trim();
+        String safeTopicCode = (topicCode == null || topicCode.isBlank()) ? null : topicCode;
+        PageRequest pageable = PageRequest.of(Math.max(0, page), safeSize, Sort.by(Sort.Direction.DESC, "publishedAt"));
+        if (safeQ != null) {
+            return papers.findFeedSearch(sourceId, since, safeTopicCode, safeQ, pageable);
+        }
+        return papers.findFeed(sourceId, since, safeTopicCode, pageable);
     }
 
     /**

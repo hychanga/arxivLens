@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePapersStore } from "@/store/papers";
 import { usePreferencesStore } from "@/store/preferences";
 import { useFavoritesStore } from "@/store/favorites";
@@ -31,6 +31,7 @@ export default function FeedPage() {
   const setSize = usePapersStore((s) => s.setSize);
   const selected = usePapersStore((s) => s.selected);
   const activeTopic = usePapersStore((s) => s.topic);
+  const setQuery = usePapersStore((s) => s.setQuery);
   const toggleSelect = usePapersStore((s) => s.toggleSelect);
   const selectAll = usePapersStore((s) => s.selectAll);
   const clearSelection = usePapersStore((s) => s.clearSelection);
@@ -60,6 +61,12 @@ export default function FeedPage() {
   const t = useT();
 
   const [savingBatch, setSavingBatch] = useState(false);
+  const [localQ, setLocalQ] = useState("");
+
+  useEffect(() => {
+    const tid = setTimeout(() => setQuery(localQ), 300);
+    return () => clearTimeout(tid);
+  }, [localQ, setQuery]);
 
   const favoritePaperIds = useMemo(
     () => new Set(favorites.map((f) => f.paper.id)),
@@ -173,6 +180,16 @@ export default function FeedPage() {
           })}
         </div>
 
+        <div className="flex items-center gap-1.5 ml-auto">
+          <input
+            type="search"
+            value={localQ}
+            onChange={(e) => setLocalQ(e.target.value)}
+            placeholder={t("feed.search_placeholder")}
+            className="rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-2 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-500 w-44"
+          />
+        </div>
+
         {/* Manual paste is for sources where auto-sync can't get the full
             article: HBR's content is paywalled; Business Weekly's search-page
             markup varied too much to scrape; McKinsey's RSS carries only a
@@ -183,7 +200,7 @@ export default function FeedPage() {
           (currentSourceCode === "hbr" ||
             currentSourceCode === "businessweekly" ||
             currentSourceCode === "mckinsey") && (
-          <div className="ml-auto">
+          <div>
             <AddArticleButton
               sourceId={currentSource.id}
               sourceCode={currentSourceCode}
@@ -196,7 +213,7 @@ export default function FeedPage() {
           <button
             onClick={saveSelected}
             disabled={savingBatch}
-            className={`${currentSourceCode === "hbr" ? "" : "ml-auto "}rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 text-sm disabled:opacity-50`}
+            className="rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 text-sm disabled:opacity-50"
           >
             {t("feed.save_n", { n: selectedCount })}
           </button>

@@ -41,10 +41,11 @@ public class PaperController {
             @RequestParam(name = "source", defaultValue = "arxiv") String source,
             @RequestParam(name = "days",   required = false) Integer days,
             @RequestParam(name = "topic",  required = false) String topic,
+            @RequestParam(name = "q",      required = false) String q,
             @RequestParam(name = "page",   defaultValue = "0") int page,
             @RequestParam(name = "size",   defaultValue = "10") int size
     ) {
-        Page<Paper> result = service.findFeed(source, days, topic, page, size);
+        Page<Paper> result = service.findFeed(source, days, topic, q, page, size);
         return Map.of(
                 "items",      result.getContent(),
                 "page",       result.getNumber(),

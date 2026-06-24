@@ -49,6 +49,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const papersSize = usePapersStore((s) => s.size);
   const papersPage = usePapersStore((s) => s.page);
   const papersTopic = usePapersStore((s) => s.topic);
+  const papersQ = usePapersStore((s) => s.q);
 
   const hydrateLocale = useLocaleStore((s) => s.hydrate);
   const hydrateTheme = useThemeStore((s) => s.hydrate);
@@ -105,7 +106,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!sourcesLoaded || !prefsLoaded) return;
     void fetchPapers();
-  }, [sourcesLoaded, prefsLoaded, papersSource, papersDays, papersSize, papersPage, papersTopic, fetchPapers]);
+  }, [sourcesLoaded, prefsLoaded, papersSource, papersDays, papersSize, papersPage, papersTopic, papersQ, fetchPapers]);
 
   if (!token) return null;
 
