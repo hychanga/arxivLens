@@ -1,6 +1,7 @@
 "use client";
 
 import { BASE_URL } from "@/lib/api";
+import { highlight } from "@/lib/highlight";
 
 /**
  * Markdown image marker the backend's HtmlExtractor emits — `![alt](url)`.
@@ -31,7 +32,7 @@ function proxied(url: string): string {
  * Splits on the marker pattern and emits a real {@code <img>} for each one,
  * with text chunks rendered as paragraphs that preserve newlines.
  */
-export default function BodyContent({ body }: { body: string }) {
+export default function BodyContent({ body, query = "" }: { body: string; query?: string }) {
   if (!body) return null;
   const parts: Array<{ kind: "text" | "img"; value: string; alt?: string }> = [];
   let last = 0;
@@ -57,7 +58,7 @@ export default function BodyContent({ body }: { body: string }) {
             className="my-3 max-w-full rounded border border-zinc-200 dark:border-zinc-800"
           />
         ) : p.value.trim() ? (
-          <p key={i} className="whitespace-pre-line">{p.value}</p>
+          <p key={i} className="whitespace-pre-line">{highlight(p.value, query)}</p>
         ) : null
       )}
     </div>

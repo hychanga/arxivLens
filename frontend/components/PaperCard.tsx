@@ -14,6 +14,7 @@ import { usePapersStore } from "@/store/papers";
 import { useFavoritesStore } from "@/store/favorites";
 import { useDownloadsStore } from "@/store/downloads";
 import BodyContent from "@/components/BodyContent";
+import { highlight } from "@/lib/highlight";
 
 interface Props {
   paper: Paper;
@@ -30,6 +31,8 @@ interface Props {
    * is cross-listed into that topic — we flag that with a small marker.
    */
   activeTopicCode?: string | null;
+  /** Active search query — matching spans in title and abstract are highlighted. */
+  query?: string;
 }
 
 export default function PaperCard({
@@ -42,6 +45,7 @@ export default function PaperCard({
   onSelect,
   showScore = false,
   activeTopicCode = null,
+  query = "",
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -170,7 +174,7 @@ export default function PaperCard({
             onClick={() => setExpanded((e) => !e)}
             className="text-left w-full"
           >
-            <h3 className="font-medium leading-tight hover:underline">{displayTitle}</h3>
+            <h3 className="font-medium leading-tight hover:underline">{highlight(displayTitle, query)}</h3>
           </button>
           {paper.url && (
             <a
@@ -189,7 +193,7 @@ export default function PaperCard({
           )}
           {expanded && (
             <div className="mt-3 space-y-2 text-sm">
-              <BodyContent body={displayAbstract} />
+              <BodyContent body={displayAbstract} query={query} />
 
               {needsTranslation && (
                 <div className="flex items-center gap-2 flex-wrap">
