@@ -106,6 +106,30 @@ export default function GolfRichEditor({
     emitChange();
   }
 
+  // WCAG relative luminance (0 = black, 1 = white).
+  function luminance(hex: string): number {
+    const ch = (s: string) => {
+      const v = parseInt(s, 16) / 255;
+      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * ch(hex.slice(1, 3)) + 0.7152 * ch(hex.slice(3, 5)) + 0.0722 * ch(hex.slice(5, 7));
+  }
+
+  // When the chosen text colour is very light (e.g. white, yellow) it becomes
+  // invisible on a white background. Auto-pair it with a dark highlight so the
+  // text is always readable. Users can remove the background with ⌫.
+  function applyForeColor(color: string) {
+    ref.current?.focus();
+    document.execCommand("styleWithCSS", false, "true");
+    document.execCommand("foreColor", false, color);
+    if (luminance(color) > 0.4) {
+      if (!document.execCommand("hiliteColor", false, "#1f2937")) {
+        document.execCommand("backColor", false, "#1f2937");
+      }
+    }
+    emitChange();
+  }
+
   function applyHighlight(color: string) {
     ref.current?.focus();
     document.execCommand("styleWithCSS", false, "true");
@@ -222,14 +246,12 @@ export default function GolfRichEditor({
           {TEXT_COLORS.map(c => (
             <button key={c} type="button" aria-label={`文字顏色 ${c}`}
               className={swatchBtn} style={{ backgroundColor: c }}
-              onMouseDown={keepFocus} onClick={() => exec("foreColor", c)} />
+              onMouseDown={keepFocus} onClick={() => applyForeColor(c)} />
           ))}
           <input ref={textColorInputRef} type="color" className="sr-only" defaultValue="#000000"
             onChange={e => {
               restoreSelection();
-              document.execCommand("styleWithCSS", false, "true");
-              document.execCommand("foreColor", false, e.target.value);
-              emitChange();
+              applyForeColor(e.target.value);
             }} />
           <button type="button" title="自訂顏色" className={`${pickerBase} rounded-full`}
             onMouseDown={saveSelection} onClick={() => textColorInputRef.current?.click()}>+</button>
