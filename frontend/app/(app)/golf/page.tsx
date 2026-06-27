@@ -420,107 +420,120 @@ function ResourceCard({
   const [playing, setPlaying] = useState(false);
 
   return (
-    <li className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
-      {/* YouTube thumbnail / inline player */}
-      {vid && (
-        <div className="w-full aspect-video bg-black">
-          {playing ? (
+    <li className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4">
+      <div className="flex items-start gap-3">
+        {/* text area */}
+        <button type="button" onClick={onToggle} className="flex-1 text-left min-w-0">
+          <div className="flex flex-wrap items-center gap-2 mb-1">
+            {item.category && (
+              <span className="rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 text-xs px-2 py-0.5">
+                {item.category}
+              </span>
+            )}
+            <h3 className="font-medium text-sm">{item.title}</h3>
+          </div>
+          {item.summary && (
+            <p className="text-xs text-zinc-500 line-clamp-2">{item.summary}</p>
+          )}
+          {tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {tags.map((tag, i) => (
+                <span key={i} className="rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs px-1.5 py-0.5">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </button>
+
+        {/* YouTube thumbnail (right of summary) */}
+        {vid && (
+          <button
+            type="button"
+            onClick={() => setPlaying(true)}
+            className="relative shrink-0 w-36 aspect-video rounded-md overflow-hidden group bg-black"
+            aria-label={`播放 ${item.title}`}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`https://img.youtube.com/vi/${vid}/mqdefault.jpg`}
+              alt={item.title}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
+              <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
+                <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white ml-0.5" aria-hidden="true">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </div>
+            </div>
+          </button>
+        )}
+
+        {/* action buttons */}
+        <div className="flex items-center gap-1 shrink-0">
+          {item.source && (
+            <a href={item.source} target="_blank" rel="noopener noreferrer"
+              className="rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+              ↗
+            </a>
+          )}
+          {item.pdfUrl && (
+            <a href={item.pdfUrl} target="_blank" rel="noopener noreferrer"
+              className="rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+              PDF
+            </a>
+          )}
+          {isAdmin && (
+            <>
+              <button type="button" onClick={onEdit}
+                className="rounded px-2 py-1 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                {t("golf.edit")}
+              </button>
+              <button type="button" onClick={onDelete}
+                className="rounded px-2 py-1 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">
+                {t("library.delete")}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {expanded && item.content && (
+        <div className="mt-3 border-t border-zinc-100 dark:border-zinc-800 pt-3">
+          <div className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed">
+            {item.content}
+          </div>
+        </div>
+      )}
+
+      {/* video lightbox */}
+      {playing && embedUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setPlaying(false)}
+        >
+          <div
+            className="w-full max-w-3xl aspect-video relative"
+            onClick={e => e.stopPropagation()}
+          >
             <iframe
               src={`${embedUrl}?autoplay=1&rel=0`}
               title={item.title}
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
-              className="w-full h-full"
+              className="w-full h-full rounded-lg"
             />
-          ) : (
             <button
-              type="button"
-              onClick={() => setPlaying(true)}
-              className="relative w-full h-full group"
-              aria-label={`播放 ${item.title}`}
+              onClick={() => setPlaying(false)}
+              className="absolute -top-9 right-0 text-white text-lg hover:opacity-75"
+              aria-label="關閉"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`https://img.youtube.com/vi/${vid}/hqdefault.jpg`}
-                alt={item.title}
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/35 transition-colors">
-                <div className="w-14 h-14 rounded-full bg-red-600 flex items-center justify-center shadow-xl group-hover:scale-105 transition-transform">
-                  <svg viewBox="0 0 24 24" className="w-7 h-7 fill-white ml-1" aria-hidden="true">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                </div>
-              </div>
+              ✕ 關閉
             </button>
-          )}
+          </div>
         </div>
       )}
-
-      <div className="p-4">
-        <div className="flex items-start gap-3">
-          <button
-            type="button"
-            onClick={onToggle}
-            className="flex-1 text-left"
-          >
-            <div className="flex flex-wrap items-center gap-2 mb-1">
-              {item.category && (
-                <span className="rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 text-xs px-2 py-0.5">
-                  {item.category}
-                </span>
-              )}
-              <h3 className="font-medium text-sm">{item.title}</h3>
-            </div>
-            {item.summary && (
-              <p className="text-xs text-zinc-500 line-clamp-2">{item.summary}</p>
-            )}
-            {tags.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1.5">
-                {tags.map((tag, i) => (
-                  <span key={i} className="rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs px-1.5 py-0.5">
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
-          </button>
-          <div className="flex items-center gap-1 shrink-0">
-            {item.source && (
-              <a href={item.source} target="_blank" rel="noopener noreferrer"
-                className="rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800">
-                ↗
-              </a>
-            )}
-            {item.pdfUrl && (
-              <a href={item.pdfUrl} target="_blank" rel="noopener noreferrer"
-                className="rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800">
-                PDF
-              </a>
-            )}
-            {isAdmin && (
-              <>
-                <button type="button" onClick={onEdit}
-                  className="rounded px-2 py-1 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800">
-                  {t("golf.edit")}
-                </button>
-                <button type="button" onClick={onDelete}
-                  className="rounded px-2 py-1 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">
-                  {t("library.delete")}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
-        {expanded && item.content && (
-          <div className="mt-3 border-t border-zinc-100 dark:border-zinc-800 pt-3">
-            <div className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed">
-              {item.content}
-            </div>
-          </div>
-        )}
-      </div>
     </li>
   );
 }
