@@ -10,6 +10,7 @@ import { useUiStore } from "@/store/ui";
 import { attachScores, type ScoredPaper } from "@/lib/relevance";
 import { useT } from "@/lib/i18n";
 import type { SortMode } from "@/types";
+import Link from "next/link";
 import PaperCard from "@/components/PaperCard";
 import Pagination from "@/components/Pagination";
 import AddArticleButton from "@/components/AddArticleButton";
@@ -212,12 +213,20 @@ export default function FeedPage() {
             currentSourceCode === "businessweekly" ||
             currentSourceCode === "mckinsey" ||
             currentSourceCode === "golf") && (
-          <div>
+          <div className="flex items-center gap-2">
             <AddArticleButton
               sourceId={currentSource.id}
               sourceCode={currentSourceCode}
               onAdded={() => void fetchPapers()}
             />
+            {currentSourceCode === "golf" && (
+              <Link
+                href="/golf"
+                className="rounded-md border border-zinc-300 dark:border-zinc-600 px-3 py-1.5 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800"
+              >
+                {t("golf.go_to_kb")}
+              </Link>
+            )}
           </div>
         )}
 

@@ -324,8 +324,42 @@ export default function AdminPage() {
         </div>
 
         <ul className="space-y-1">
-          {sources.map((s) => (
+          {sources.map((s, idx) => (
             <li key={s.id} className="flex items-center gap-3 text-sm py-1">
+              <div className="flex flex-col gap-0.5">
+                <button
+                  onClick={async () => {
+                    if (idx === 0) return;
+                    const above = sources[idx - 1];
+                    await Promise.all([
+                      updateSource(s.id, { displayOrder: above.displayOrder }),
+                      updateSource(above.id, { displayOrder: s.displayOrder }),
+                    ]);
+                    await reloadSources();
+                  }}
+                  disabled={idx === 0}
+                  aria-label={t("admin.move_up")}
+                  className="leading-none text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 disabled:opacity-20 disabled:cursor-default"
+                >
+                  ▲
+                </button>
+                <button
+                  onClick={async () => {
+                    if (idx === sources.length - 1) return;
+                    const below = sources[idx + 1];
+                    await Promise.all([
+                      updateSource(s.id, { displayOrder: below.displayOrder }),
+                      updateSource(below.id, { displayOrder: s.displayOrder }),
+                    ]);
+                    await reloadSources();
+                  }}
+                  disabled={idx === sources.length - 1}
+                  aria-label={t("admin.move_down")}
+                  className="leading-none text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 disabled:opacity-20 disabled:cursor-default"
+                >
+                  ▼
+                </button>
+              </div>
               <code className="font-mono text-xs text-zinc-500 w-20 truncate">{s.code}</code>
               <span className="flex-1 truncate">{s.name}</span>
               <button
