@@ -21,6 +21,7 @@ export default function AdminPage() {
   const loadTopicsFor = useTopicsStore((s) => s.loadFor);
   const updateTopic = useTopicsStore((s) => s.update);
   const createTopic = useTopicsStore((s) => s.create);
+  const removeTopic = useTopicsStore((s) => s.remove);
 
   const currentSourceId = usePreferencesStore((s) => s.currentSourceId);
   const current = findSourceById(sources, currentSourceId);
@@ -36,6 +37,8 @@ export default function AdminPage() {
   const [resyncDays, setResyncDays] = useState(30);
   const [testingEmail, setTestingEmail] = useState(false);
   const [newTopic, setNewTopic] = useState({ code: "", name: "" });
+  const [editingTopicId, setEditingTopicId] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState({ code: "", name: "" });
 
   useEffect(() => {
     if (role !== "ADMIN") return;
@@ -252,20 +255,87 @@ export default function AdminPage() {
           </button>
         </div>
         <ul className="space-y-1">
-          {topics.map((tp) => (
-            <li key={tp.id} className="flex items-center gap-3 text-sm py-1">
-              <code className="font-mono text-xs text-zinc-500 w-24 truncate">{tp.code}</code>
-              <span className="flex-1 truncate">{tp.name}</span>
-              <label className="text-xs flex items-center gap-1">
-                <input
-                  type="checkbox"
-                  checked={tp.enabled}
-                  onChange={(e) => updateTopic(tp.id, { enabled: e.target.checked })}
-                />
-                {t("admin.enabled")}
-              </label>
-            </li>
-          ))}
+          {topics.map((tp) => {
+            const isEditing = editingTopicId === tp.id;
+            return (
+              <li key={tp.id} className="flex items-center gap-2 text-sm py-1">
+                {isEditing ? (
+                  <>
+                    <input
+                      value={editDraft.code}
+                      onChange={(e) => setEditDraft({ ...editDraft, code: e.target.value })}
+                      className="font-mono text-xs w-28 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-2 py-0.5"
+                    />
+                    <input
+                      value={editDraft.name}
+                      onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })}
+                      className="flex-1 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-2 py-0.5 text-xs"
+                    />
+                    <button
+                      disabled={!editDraft.code.trim() || !editDraft.name.trim()}
+                      onClick={async () => {
+                        try {
+                          await updateTopic(tp.id, { code: editDraft.code.trim(), name: editDraft.name.trim() });
+                          setEditingTopicId(null);
+                          flash("Topic updated", "success");
+                        } catch (e) {
+                          flash(e instanceof Error ? e.message : "Update failed", "error");
+                        }
+                      }}
+                      className="rounded bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 text-white px-2 py-0.5 text-xs disabled:opacity-50"
+                    >
+                      {t("common.save")}
+                    </button>
+                    <button
+                      onClick={() => setEditingTopicId(null)}
+                      className="rounded px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    >
+                      {t("common.cancel")}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <code className="font-mono text-xs text-zinc-500 w-24 truncate">{tp.code}</code>
+                    <span className="flex-1 truncate">{tp.name}</span>
+                    <label className="text-xs flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={tp.enabled}
+                        onChange={(e) => updateTopic(tp.id, { enabled: e.target.checked })}
+                      />
+                      {t("admin.enabled")}
+                    </label>
+                    <button
+                      onClick={() => {
+                        setEditDraft({ code: tp.code, name: tp.name });
+                        setEditingTopicId(tp.id);
+                      }}
+                      className="rounded px-2 py-0.5 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    >
+                      {t("common.edit")}
+                    </button>
+                    <button
+                      onClick={() =>
+                        ask({
+                          title: t("admin.delete_topic_title", { name: tp.name }),
+                          message: t("admin.delete_topic_msg"),
+                          confirmLabel: t("library.delete"),
+                          danger: true,
+                          onConfirm: async () => {
+                            await removeTopic(tp.id);
+                            flash("Topic deleted", "success");
+                          },
+                        })
+                      }
+                      className="rounded text-red-600 dark:text-red-300 px-2 py-0.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/30"
+                    >
+                      {t("library.delete")}
+                    </button>
+                  </>
+                )}
+              </li>
+            );
+          })}
           {topics.length === 0 && <li className="text-sm text-zinc-500">{t("admin.no_topics")}</li>}
         </ul>
       </section>
