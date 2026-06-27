@@ -1,14 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import DOMPurify from "dompurify";
-
-const ALLOWED_TAGS = ["b", "strong", "i", "em", "u", "span", "br", "div", "p", "font"];
-const ALLOWED_ATTR = ["style", "color", "face", "size"];
-
-export function sanitizeGolf(html: string): string {
-  return DOMPurify.sanitize(html, { ALLOWED_TAGS, ALLOWED_ATTR });
-}
 
 export function looksLikeHtml(s: string | null | undefined): boolean {
   return s ? /<[a-z][\s\S]*>/i.test(s) : false;
@@ -22,19 +14,47 @@ const FONTS: { label: string; css: string }[] = [
   { label: "標楷體", css: "DFKai-SB, serif" },
 ];
 
-// Pixel-based font sizes. execCommand("fontSize") always emits <font size="N">
-// (a presentational attribute) even with styleWithCSS=true, and that loses to
-// Tailwind's class selectors. We use size="7" as a placeholder then swap those
-// elements for <span style="font-size: Xpx"> which has inline-style specificity.
-const SIZES: { label: string; px: string }[] = [
-  { label: "小 12px", px: "12px" },
-  { label: "中 16px", px: "16px" },
-  { label: "大 20px", px: "20px" },
-  { label: "特大 28px", px: "28px" },
+const SIZES: { label: string; px: string; idx: string }[] = [
+  { label: "小 12px",   px: "12px", idx: "2" },
+  { label: "中 16px",   px: "16px", idx: "3" },
+  { label: "大 20px",   px: "20px", idx: "5" },
+  { label: "特大 28px", px: "28px", idx: "6" },
 ];
 
+// Map execCommand fontSize index → CSS px. execCommand("fontSize") always
+// emits <font size="N"> (presentational attribute), which Tailwind v4's
+// author-level * { font-size: inherit } overrides. We convert every <font>
+// to <span style="font-size: Npx"> (inline style, highest specificity) so
+// the formatting survives in the card view.
+const EXEC_SIZE_TO_PX: Record<string, string> = {
+  "1": "10px", "2": "12px", "3": "16px", "4": "18px",
+  "5": "20px", "6": "28px", "7": "32px",
+};
+
 const TEXT_COLORS = ["#111827", "#ef4444", "#f97316", "#16a34a", "#2563eb", "#7c3aed", "#0891b2"];
-const HIGHLIGHTS = ["#fef08a", "#bbf7d0", "#bfdbfe", "#fbcfe8", "#fed7aa", "#e9d5ff"];
+const HIGHLIGHTS  = ["#fef08a", "#bbf7d0", "#bfdbfe", "#fbcfe8", "#fed7aa", "#e9d5ff"];
+
+// Converts any <font size|color|face> elements to <span style="..."> so the
+// saved HTML always uses inline styles rather than presentational attributes.
+// This runs synchronously before each innerHTML read in emitChange, so no
+// <font> tags ever make it into form state or the database.
+function convertFontElements(root: HTMLElement) {
+  const fonts = Array.from(root.querySelectorAll("font"));
+  for (const el of fonts) {
+    const span = document.createElement("span");
+    // Preserve any existing inline style already on the element
+    const existing = (el as HTMLElement).style.cssText;
+    if (existing) span.style.cssText = existing;
+    const size  = el.getAttribute("size");
+    const color = el.getAttribute("color");
+    const face  = el.getAttribute("face");
+    if (size)  span.style.fontSize   = EXEC_SIZE_TO_PX[size] ?? "16px";
+    if (color) span.style.color      = color;
+    if (face)  span.style.fontFamily = face;
+    span.innerHTML = (el as HTMLElement).innerHTML;
+    el.parentNode?.replaceChild(span, el);
+  }
+}
 
 export default function GolfRichEditor({
   value,
@@ -47,18 +67,20 @@ export default function GolfRichEditor({
   minHeight?: string;
   placeholder?: string;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const savedRangeRef = useRef<Range | null>(null);
+  const ref              = useRef<HTMLDivElement>(null);
+  const savedRangeRef    = useRef<Range | null>(null);
   const textColorInputRef = useRef<HTMLInputElement>(null);
   const highlightInputRef = useRef<HTMLInputElement>(null);
+  const processingRef    = useRef(false);
   const [openMenu, setOpenMenu] = useState<"font" | "size" | null>(null);
   const [empty, setEmpty] = useState(true);
 
-  // Seed content on mount only. Parent uses `key` prop to re-mount when
-  // editing a different item — that's cleaner than trying to sync innerHTML.
+  // Seed content on mount only — parent uses `key` prop to force a fresh
+  // mount when editing a different item. We set innerHTML directly (no
+  // DOMPurify) because this runs client-side only inside a contenteditable.
   useEffect(() => {
     if (ref.current) {
-      ref.current.innerHTML = sanitizeGolf(value);
+      ref.current.innerHTML = value;
       setEmpty(!ref.current.textContent?.trim());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -71,18 +93,12 @@ export default function GolfRichEditor({
     emitChange();
   }
 
-  // execCommand("fontSize") always emits <font size="N"> (presentational, low specificity).
-  // We use size="7" as a unique marker, then replace those elements with
-  // <span style="font-size: Xpx"> so inline-style specificity wins over Tailwind classes.
-  function applyFontSize(px: string) {
+  // Uses the correct size index so that text typed after setting the size
+  // (without a selection) also receives the right <font size="idx"> which
+  // convertFontElements then maps to the exact px value.
+  function applyFontSize(px: string, idx: string) {
     ref.current?.focus();
-    document.execCommand("fontSize", false, "7");
-    ref.current?.querySelectorAll("font[size='7']").forEach(el => {
-      const span = document.createElement("span");
-      span.style.fontSize = px;
-      span.innerHTML = (el as HTMLElement).innerHTML;
-      el.parentNode?.replaceChild(span, el);
-    });
+    document.execCommand("fontSize", false, idx);
     emitChange();
   }
 
@@ -96,12 +112,14 @@ export default function GolfRichEditor({
   }
 
   function emitChange() {
-    if (!ref.current) return;
+    if (!ref.current || processingRef.current) return;
+    // Convert <font> presentational attributes → <span style> inline styles
+    // before reading innerHTML so the saved content always wins the CSS cascade.
+    processingRef.current = true;
+    convertFontElements(ref.current);
+    processingRef.current = false;
     const hasText = Boolean(ref.current.textContent?.trim());
     setEmpty(!hasText);
-    // Store raw innerHTML — DOMPurify is for display-side only.
-    // execCommand with styleWithCSS=true produces inline CSS (span[style])
-    // which can't be sanitized on save without risking stripping valid styles.
     onChange(hasText ? ref.current.innerHTML : "");
   }
 
@@ -126,7 +144,7 @@ export default function GolfRichEditor({
   const btn =
     "rounded border border-zinc-300 dark:border-zinc-700 px-2 py-1 text-sm leading-none " +
     "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300";
-  const swatchBtn = "h-4 w-4 rounded-full border border-zinc-300 dark:border-zinc-600 shrink-0";
+  const swatchBtn  = "h-4 w-4 rounded-full border border-zinc-300 dark:border-zinc-600 shrink-0";
   const swatchRect = "h-4 w-4 rounded-sm border border-zinc-300 dark:border-zinc-600 shrink-0";
   const pickerBase =
     "h-4 w-4 border border-dashed border-zinc-400 dark:border-zinc-500 text-zinc-400 " +
@@ -174,7 +192,7 @@ export default function GolfRichEditor({
                   className="px-3 py-1.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
                   style={{ fontSize: s.px }}
                   onMouseDown={keepFocus}
-                  onClick={() => { applyFontSize(s.px); setOpenMenu(null); }}>
+                  onClick={() => { applyFontSize(s.px, s.idx); setOpenMenu(null); }}>
                   {s.label}
                 </button>
               ))}
@@ -253,7 +271,7 @@ export default function GolfRichEditor({
           aria-multiline="true"
           onInput={emitChange}
           style={{ minHeight }}
-          className="w-full bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus:outline-none [&_*]:my-0"
+          className="w-full bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus:outline-none"
         />
         {empty && placeholder && (
           <span className="pointer-events-none absolute left-3 top-2 text-sm text-zinc-400">
