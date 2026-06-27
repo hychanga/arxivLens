@@ -70,6 +70,15 @@ public class CronController {
                 "message", "McKinsey sync started; a summary email follows when it finishes.");
     }
 
+    @PostMapping("/medium-sync")
+    public Map<String, Object> mediumSync(@RequestParam(name = "token", required = false) String token,
+                                          @RequestHeader(name = "X-Cron-Token", required = false) String headerToken) {
+        authorize(token != null ? token : headerToken);
+        executor.submit(scheduler::runMediumSyncAndNotify);
+        return Map.of("status", "started",
+                "message", "Medium sync started; a summary email follows when it finishes.");
+    }
+
     private void authorize(String provided) {
         String expected = props.cron() == null ? null : props.cron().token();
         if (expected == null || expected.isBlank()) {

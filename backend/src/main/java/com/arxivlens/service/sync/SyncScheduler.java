@@ -104,6 +104,21 @@ public class SyncScheduler {
         return to;
     }
 
+    public SyncResult runMediumSyncAndNotify() {
+        log.info("Medium sync starting");
+        SyncResult r = dispatcher.syncByCode("medium");
+        log.info("Medium sync done: fetched={} inserted={} skipped={} error={}",
+                r.fetched(), r.inserted(), r.skipped(), r.error());
+        notifyComplete("Medium", "articles", r);
+        return r;
+    }
+
+    @Scheduled(cron = "${app.scheduler.medium-cron:0 15 */6 * * *}")
+    public void medium() {
+        if (!enabled) return;
+        runMediumSyncAndNotify();
+    }
+
     @Scheduled(cron = "${app.scheduler.hbr-cron:0 30 */6 * * *}")
     public void hbr() {
         if (!enabled) return;
