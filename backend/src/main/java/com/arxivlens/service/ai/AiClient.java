@@ -25,6 +25,12 @@ public interface AiClient {
      */
     TranslationResult translate(String title, String abstractText, String introduction, String targetLanguage);
 
+    /**
+     * Suggests 5–8 short golf-related tags (in Traditional Chinese) for a knowledge-base
+     * resource based on its title, summary, and content excerpt.
+     */
+    java.util.List<String> suggestGolfTags(String title, String summary, String content);
+
     record AiSummaryResult(
             String summary,
             java.util.List<String> keyPoints,

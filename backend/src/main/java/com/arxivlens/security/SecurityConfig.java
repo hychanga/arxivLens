@@ -116,6 +116,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST,   "/api/golf/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT,    "/api/golf/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/golf/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST,   "/api/upload/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);

@@ -3,6 +3,7 @@ package com.arxivlens.controller;
 import com.arxivlens.dto.GolfDtos.GolfResourceRequest;
 import com.arxivlens.entity.GolfResource;
 import com.arxivlens.repository.GolfResourceRepository;
+import com.arxivlens.service.ai.AiClient;
 import com.arxivlens.web.ApiException;
 import com.arxivlens.web.AuthUtil;
 import jakarta.validation.Valid;
@@ -15,9 +16,11 @@ import java.util.List;
 public class GolfController {
 
     private final GolfResourceRepository repository;
+    private final AiClient ai;
 
-    public GolfController(GolfResourceRepository repository) {
+    public GolfController(GolfResourceRepository repository, AiClient ai) {
         this.repository = repository;
+        this.ai = ai;
     }
 
     @GetMapping
@@ -61,6 +64,19 @@ public class GolfController {
         }
         repository.deleteById(id);
     }
+
+    @PostMapping("/suggest-tags")
+    public List<String> suggestTags(@RequestBody SuggestTagsRequest req) {
+        requireAdmin();
+        if (!ai.isConfigured())
+            throw new ApiException(HttpStatus.NOT_IMPLEMENTED, "AI not configured — set GEMINI_API_KEY");
+        return ai.suggestGolfTags(
+                req.title() == null ? "" : req.title(),
+                req.summary() == null ? "" : req.summary(),
+                req.content() == null ? "" : req.content());
+    }
+
+    record SuggestTagsRequest(String title, String summary, String content) {}
 
     private void requireAdmin() {
         if (!AuthUtil.isAdmin()) {

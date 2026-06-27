@@ -245,6 +245,63 @@ public class GeminiAiClient implements AiClient {
         }
     }
 
+    @Override
+    public List<String> suggestGolfTags(String title, String summary, String content) {
+        String apiKey = requireApiKey();
+        String url = BASE + props.ai().gemini().model() + ":generateContent?key="
+                + URLEncoder.encode(apiKey, StandardCharsets.UTF_8);
+
+        ObjectNode body = mapper.createObjectNode();
+        ArrayNode contents = body.putArray("contents");
+        contents.addObject().putArray("parts").addObject().put("text", buildGolfTagPrompt(title, summary, content));
+        ObjectNode gc = body.putObject("generationConfig");
+        gc.put("responseMimeType", "application/json");
+        gc.put("temperature", 0.4);
+        gc.put("maxOutputTokens", 256);
+        gc.putObject("thinkingConfig").put("thinkingBudget", 0);
+
+        try {
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(20))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)))
+                    .build();
+            HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() / 100 != 2) {
+                String upstream = extractGeminiError(res.body());
+                throw new ApiException(HttpStatus.BAD_GATEWAY, "Gemini " + res.statusCode() + ": "
+                        + (upstream.isEmpty() ? "(no details)" : upstream));
+            }
+            String text = mapper.readTree(res.body())
+                    .path("candidates").path(0).path("content").path("parts").path(0)
+                    .path("text").asText("");
+            if (text.isBlank()) throw new ApiException(HttpStatus.BAD_GATEWAY, "Gemini returned no content");
+            return asStringList(mapper.readTree(text).path("tags"));
+        } catch (ApiException e) {
+            throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "Gemini call interrupted");
+        } catch (Exception e) {
+            log.warn("Gemini suggestGolfTags failed", e);
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "Gemini call failed: " + e.getMessage());
+        }
+    }
+
+    private static String buildGolfTagPrompt(String title, String summary, String content) {
+        StringBuilder sb = new StringBuilder(512);
+        sb.append("你是高爾夫知識分類助手。根據以下文章，生成 5 到 8 個繁體中文短標籤（每個 2-6 字），");
+        sb.append("描述文章的核心主題。只輸出 JSON，不加說明。\n\n");
+        sb.append("標題：").append(title == null ? "" : title).append("\n");
+        if (summary != null && !summary.isBlank())
+            sb.append("摘要：").append(summary).append("\n");
+        if (content != null && !content.isBlank())
+            sb.append("內容節錄：").append(content, 0, Math.min(content.length(), 800)).append("\n");
+        sb.append("\n格式：{\"tags\": [\"標籤1\", \"標籤2\", ...]}\n");
+        return sb.toString();
+    }
+
     private static String buildTranslationPrompt(String title, String abstractText, String introduction, String targetLanguage) {
         boolean hasIntro = introduction != null && !introduction.isBlank();
         StringBuilder sb = new StringBuilder(2048);

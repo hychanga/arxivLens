@@ -6,6 +6,7 @@ import { useUiStore } from "@/store/ui";
 import { useT } from "@/lib/i18n";
 import {
   listGolf, createGolf, updateGolf, removeGolf,
+  uploadGolfPdf, suggestGolfTags,
   splitTags, youtubeEmbed, GOLF_CATEGORIES,
   type GolfResource, type GolfResourceInput,
 } from "@/lib/golfApi";
@@ -37,6 +38,8 @@ export default function GolfPage() {
   const [form, setForm] = useState<GolfResourceInput>(EMPTY_FORM);
   const [tagInput, setTagInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
+  const [suggestingTags, setSuggestingTags] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
 
   const load = useCallback(async (q?: string) => {
@@ -266,12 +269,43 @@ export default function GolfPage() {
               </div>
 
               <FormField label={t("golf.field_tags")}>
-                <TagEditor
-                  tags={splitTags(form.tags ?? null)}
-                  tagInput={tagInput}
-                  setTagInput={setTagInput}
-                  setForm={setForm}
-                />
+                <div className="space-y-1.5">
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      disabled={suggestingTags || !form.title?.trim()}
+                      onClick={async () => {
+                        setSuggestingTags(true);
+                        try {
+                          const suggested = await suggestGolfTags(
+                            form.title ?? "",
+                            form.summary ?? "",
+                            form.content ?? ""
+                          );
+                          const existing = splitTags(form.tags ?? null);
+                          const added = suggested.filter(tag => !existing.includes(tag));
+                          if (added.length > 0) {
+                            setForm(f => ({ ...f, tags: [...existing, ...added].join(",") }));
+                          }
+                          flash(added.length > 0 ? `已新增 ${added.length} 個 AI 標籤` : "無新標籤可加", "success");
+                        } catch (e) {
+                          flash(e instanceof Error ? e.message : "AI 標籤失敗", "error");
+                        } finally {
+                          setSuggestingTags(false);
+                        }
+                      }}
+                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-40 disabled:no-underline"
+                    >
+                      {suggestingTags ? t("golf.ai_suggesting") : t("golf.ai_suggest_tags")}
+                    </button>
+                  </div>
+                  <TagEditor
+                    tags={splitTags(form.tags ?? null)}
+                    tagInput={tagInput}
+                    setTagInput={setTagInput}
+                    setForm={setForm}
+                  />
+                </div>
               </FormField>
 
               <FormField label={t("golf.field_summary")}>
@@ -304,13 +338,39 @@ export default function GolfPage() {
                   />
                 </FormField>
                 <FormField label={t("golf.field_pdf")}>
-                  <input
-                    type="text"
-                    value={form.pdfUrl ?? ""}
-                    onChange={e => setForm(f => ({ ...f, pdfUrl: e.target.value }))}
-                    placeholder="https://..."
-                    className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-                  />
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={form.pdfUrl ?? ""}
+                      onChange={e => setForm(f => ({ ...f, pdfUrl: e.target.value }))}
+                      placeholder="https://..."
+                      className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
+                    />
+                    <label className={`inline-flex items-center gap-2 cursor-pointer rounded-md border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 text-xs hover:bg-zinc-50 dark:hover:bg-zinc-800 ${uploadingPdf ? "opacity-50 pointer-events-none" : ""}`}>
+                      {uploadingPdf ? t("golf.uploading_pdf") : t("golf.upload_pdf")}
+                      <input
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        className="hidden"
+                        disabled={uploadingPdf}
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          if (!f) return;
+                          setUploadingPdf(true);
+                          try {
+                            const url = await uploadGolfPdf(f);
+                            setForm(prev => ({ ...prev, pdfUrl: url }));
+                            flash(t("golf.upload_pdf_done"), "success");
+                          } catch (err) {
+                            flash(err instanceof Error ? err.message : "Upload failed", "error");
+                          } finally {
+                            setUploadingPdf(false);
+                            e.target.value = "";
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
                 </FormField>
               </div>
 

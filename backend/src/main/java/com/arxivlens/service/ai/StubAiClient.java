@@ -37,4 +37,10 @@ public class StubAiClient implements AiClient {
         throw new ApiException(HttpStatus.NOT_IMPLEMENTED,
                 "AI translation not configured. Set GEMINI_API_KEY in the environment and restart the server.");
     }
+
+    @Override
+    public java.util.List<String> suggestGolfTags(String title, String summary, String content) {
+        throw new ApiException(HttpStatus.NOT_IMPLEMENTED,
+                "AI not configured. Set GEMINI_API_KEY in the environment and restart the server.");
+    }
 }
