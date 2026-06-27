@@ -115,20 +115,23 @@ export default function GolfRichEditor({
     return 0.2126 * ch(hex.slice(1, 3)) + 0.7152 * ch(hex.slice(3, 5)) + 0.0722 * ch(hex.slice(5, 7));
   }
 
+  // RGB inversion: white→black, light-yellow→dark-blue (complementary), etc.
+  function invertColor(hex: string): string {
+    const c = (o: number) => (255 - parseInt(hex.slice(o, o + 2), 16)).toString(16).padStart(2, "0");
+    return `#${c(1)}${c(3)}${c(5)}`;
+  }
+
   // When a light text colour (white, yellow …) is chosen:
-  //   • Light mode  — invisible on white background → auto-add a dark highlight.
-  //   • Dark mode   — already contrasts against the dark background → just apply
-  //                   the colour directly, no background needed.
+  //   • Light mode — would be invisible on white → swap to its complementary
+  //                  (RGB-inverted) colour so the text is always readable.
+  //   • Dark mode  — light colours already contrast against the dark background
+  //                  → apply the chosen colour directly, no change needed.
   function applyForeColor(color: string) {
     ref.current?.focus();
     document.execCommand("styleWithCSS", false, "true");
-    document.execCommand("foreColor", false, color);
     const isDark = document.documentElement.classList.contains("dark");
-    if (!isDark && luminance(color) > 0.4) {
-      if (!document.execCommand("hiliteColor", false, "#1f2937")) {
-        document.execCommand("backColor", false, "#1f2937");
-      }
-    }
+    const effective = (!isDark && luminance(color) > 0.4) ? invertColor(color) : color;
+    document.execCommand("foreColor", false, effective);
     emitChange();
   }
 
