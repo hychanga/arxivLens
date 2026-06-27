@@ -22,12 +22,15 @@ const FONTS: { label: string; css: string }[] = [
   { label: "標楷體", css: "DFKai-SB, serif" },
 ];
 
-// execCommand fontSize uses the legacy 1–7 scale
-const SIZES: { label: string; value: string }[] = [
-  { label: "小 S", value: "2" },
-  { label: "中 M", value: "3" },
-  { label: "大 L", value: "5" },
-  { label: "特大 XL", value: "6" },
+// Pixel-based font sizes. execCommand("fontSize") always emits <font size="N">
+// (a presentational attribute) even with styleWithCSS=true, and that loses to
+// Tailwind's class selectors. We use size="7" as a placeholder then swap those
+// elements for <span style="font-size: Xpx"> which has inline-style specificity.
+const SIZES: { label: string; px: string }[] = [
+  { label: "小 12px", px: "12px" },
+  { label: "中 16px", px: "16px" },
+  { label: "大 20px", px: "20px" },
+  { label: "特大 28px", px: "28px" },
 ];
 
 const TEXT_COLORS = ["#111827", "#ef4444", "#f97316", "#16a34a", "#2563eb", "#7c3aed", "#0891b2"];
@@ -65,6 +68,21 @@ export default function GolfRichEditor({
     ref.current?.focus();
     document.execCommand("styleWithCSS", false, "true");
     document.execCommand(command, false, val);
+    emitChange();
+  }
+
+  // execCommand("fontSize") always emits <font size="N"> (presentational, low specificity).
+  // We use size="7" as a unique marker, then replace those elements with
+  // <span style="font-size: Xpx"> so inline-style specificity wins over Tailwind classes.
+  function applyFontSize(px: string) {
+    ref.current?.focus();
+    document.execCommand("fontSize", false, "7");
+    ref.current?.querySelectorAll("font[size='7']").forEach(el => {
+      const span = document.createElement("span");
+      span.style.fontSize = px;
+      span.innerHTML = (el as HTMLElement).innerHTML;
+      el.parentNode?.replaceChild(span, el);
+    });
     emitChange();
   }
 
@@ -152,8 +170,9 @@ export default function GolfRichEditor({
               {SIZES.map(s => (
                 <button key={s.label} type="button"
                   className="px-3 py-1.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  style={{ fontSize: s.px }}
                   onMouseDown={keepFocus}
-                  onClick={() => { exec("fontSize", s.value); setOpenMenu(null); }}>
+                  onClick={() => { applyFontSize(s.px); setOpenMenu(null); }}>
                   {s.label}
                 </button>
               ))}

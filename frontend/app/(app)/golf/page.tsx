@@ -506,7 +506,7 @@ function ResourceCard({
         <div className="mt-3 border-t border-zinc-100 dark:border-zinc-800 pt-3">
           {looksLikeHtml(item.content) ? (
             <div
-              className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed [&_p]:my-1 [&_div]:min-h-[1em]"
+              className="text-sm leading-relaxed dark:text-zinc-300 [&_p]:my-1 [&_div]:min-h-[1em]"
               dangerouslySetInnerHTML={{ __html: sanitizeGolf(item.content) }}
             />
           ) : (
