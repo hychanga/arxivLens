@@ -44,16 +44,18 @@ export default function GolfPage() {
     try {
       setItems(await listGolf(q));
     } catch (e) {
-      flash(e instanceof Error ? e.message : t("golf.load_error"), "error");
+      flash(e instanceof Error ? e.message : "載入失敗", "error");
     } finally {
       setLoading(false);
     }
-  }, [flash, t]);
-
-  useEffect(() => { void load(); }, [load]);
+  }, [flash]);
 
   useEffect(() => {
-    const tid = setTimeout(() => void load(search.trim() || undefined), 300);
+    if (!search.trim()) {
+      void load();
+      return;
+    }
+    const tid = setTimeout(() => void load(search.trim()), 300);
     return () => clearTimeout(tid);
   }, [search, load]);
 
