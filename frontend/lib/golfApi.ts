@@ -68,8 +68,13 @@ export function splitTags(tags: string | null): string[] {
   return tags ? tags.split(",").map(t => t.trim()).filter(Boolean) : [];
 }
 
-export function youtubeEmbed(url: string | null): string | null {
+export function youtubeId(url: string | null): string | null {
   if (!url) return null;
   const m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/);
-  return m ? `https://www.youtube.com/embed/${m[1]}` : null;
+  return m ? m[1] : null;
+}
+
+export function youtubeEmbed(url: string | null): string | null {
+  const id = youtubeId(url);
+  return id ? `https://www.youtube.com/embed/${id}` : null;
 }
