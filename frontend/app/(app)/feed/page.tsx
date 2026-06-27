@@ -210,7 +210,8 @@ export default function FeedPage() {
         {currentSource &&
           (currentSourceCode === "hbr" ||
             currentSourceCode === "businessweekly" ||
-            currentSourceCode === "mckinsey") && (
+            currentSourceCode === "mckinsey" ||
+            currentSourceCode === "golf") && (
           <div>
             <AddArticleButton
               sourceId={currentSource.id}

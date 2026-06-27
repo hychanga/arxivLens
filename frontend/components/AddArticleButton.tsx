@@ -42,6 +42,7 @@ function expectedUrlSubstring(sourceCode: string | undefined): string | null {
     case "hbr": return "hbr";
     case "businessweekly": return "businessweekly";
     case "mckinsey": return "mckinsey";
+    case "golf": return null;
     default: return null;
   }
 }
