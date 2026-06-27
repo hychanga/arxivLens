@@ -31,8 +31,12 @@ const EXEC_SIZE_TO_PX: Record<string, string> = {
   "5": "20px", "6": "28px", "7": "32px",
 };
 
-const TEXT_COLORS = ["#111827", "#ef4444", "#f97316", "#16a34a", "#2563eb", "#7c3aed", "#0891b2"];
-const HIGHLIGHTS  = ["#fef08a", "#bbf7d0", "#bfdbfe", "#fbcfe8", "#fed7aa", "#e9d5ff"];
+const TEXT_COLORS = [
+  "#000000", "#ffffff", "#6b7280",
+  "#ef4444", "#f97316", "#eab308",
+  "#16a34a", "#2563eb", "#7c3aed", "#ec4899",
+];
+const HIGHLIGHTS = ["#fef08a", "#bbf7d0", "#bfdbfe", "#fbcfe8", "#fed7aa", "#e9d5ff"];
 
 // Converts any <font size|color|face> elements to <span style="..."> so the
 // saved HTML always uses inline styles rather than presentational attributes.
