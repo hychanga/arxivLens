@@ -115,14 +115,16 @@ export default function GolfRichEditor({
     return 0.2126 * ch(hex.slice(1, 3)) + 0.7152 * ch(hex.slice(3, 5)) + 0.0722 * ch(hex.slice(5, 7));
   }
 
-  // When the chosen text colour is very light (e.g. white, yellow) it becomes
-  // invisible on a white background. Auto-pair it with a dark highlight so the
-  // text is always readable. Users can remove the background with ⌫.
+  // When a light text colour (white, yellow …) is chosen:
+  //   • Light mode  — invisible on white background → auto-add a dark highlight.
+  //   • Dark mode   — already contrasts against the dark background → just apply
+  //                   the colour directly, no background needed.
   function applyForeColor(color: string) {
     ref.current?.focus();
     document.execCommand("styleWithCSS", false, "true");
     document.execCommand("foreColor", false, color);
-    if (luminance(color) > 0.4) {
+    const isDark = document.documentElement.classList.contains("dark");
+    if (!isDark && luminance(color) > 0.4) {
       if (!document.execCommand("hiliteColor", false, "#1f2937")) {
         document.execCommand("backColor", false, "#1f2937");
       }
