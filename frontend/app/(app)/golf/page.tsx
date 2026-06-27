@@ -10,6 +10,7 @@ import {
   splitTags, youtubeId, youtubeEmbed, GOLF_CATEGORIES,
   type GolfResource, type GolfResourceInput,
 } from "@/lib/golfApi";
+import GolfRichEditor, { sanitizeGolf, looksLikeHtml } from "@/components/GolfRichEditor";
 
 const EMPTY_FORM: GolfResourceInput = {
   title: "",
@@ -309,21 +310,21 @@ export default function GolfPage() {
               </FormField>
 
               <FormField label={t("golf.field_summary")}>
-                <textarea
-                  rows={3}
+                <GolfRichEditor
+                  key={`summary-${editing?.id ?? "new"}`}
                   value={form.summary ?? ""}
-                  onChange={e => setForm(f => ({ ...f, summary: e.target.value }))}
-                  className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
+                  onChange={html => setForm(f => ({ ...f, summary: html }))}
+                  minHeight="5rem"
                 />
               </FormField>
 
               <FormField label={t("golf.field_content")}>
-                <textarea
-                  rows={8}
+                <GolfRichEditor
+                  key={`content-${editing?.id ?? "new"}`}
                   value={form.content ?? ""}
-                  onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
+                  onChange={html => setForm(f => ({ ...f, content: html }))}
+                  minHeight="12rem"
                   placeholder={t("golf.content_placeholder")}
-                  className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-sm font-mono"
                 />
               </FormField>
 
@@ -433,7 +434,9 @@ function ResourceCard({
             <h3 className="font-medium text-sm">{item.title}</h3>
           </div>
           {item.summary && (
-            <p className="text-xs text-zinc-500 line-clamp-2">{item.summary}</p>
+            <p className="text-xs text-zinc-500 line-clamp-2">
+              {item.summary.replace(/<[^>]*>/g, "")}
+            </p>
           )}
           {tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1.5">
@@ -501,9 +504,16 @@ function ResourceCard({
 
       {expanded && item.content && (
         <div className="mt-3 border-t border-zinc-100 dark:border-zinc-800 pt-3">
-          <div className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed">
-            {item.content}
-          </div>
+          {looksLikeHtml(item.content) ? (
+            <div
+              className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed [&_p]:my-1 [&_div]:min-h-[1em]"
+              dangerouslySetInnerHTML={{ __html: sanitizeGolf(item.content) }}
+            />
+          ) : (
+            <div className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed">
+              {item.content}
+            </div>
+          )}
         </div>
       )}
 
