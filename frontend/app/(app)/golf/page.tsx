@@ -10,7 +10,7 @@ import {
   splitTags, youtubeId, youtubeEmbed, GOLF_CATEGORIES,
   type GolfResource, type GolfResourceInput,
 } from "@/lib/golfApi";
-import GolfRichEditor, { sanitizeGolf, looksLikeHtml } from "@/components/GolfRichEditor";
+import GolfRichEditor, { looksLikeHtml } from "@/components/GolfRichEditor";
 
 const EMPTY_FORM: GolfResourceInput = {
   title: "",
@@ -506,8 +506,8 @@ function ResourceCard({
         <div className="mt-3 border-t border-zinc-100 dark:border-zinc-800 pt-3">
           {looksLikeHtml(item.content) ? (
             <div
-              className="text-sm leading-relaxed dark:text-zinc-300 [&_p]:my-1 [&_div]:min-h-[1em]"
-              dangerouslySetInnerHTML={{ __html: sanitizeGolf(item.content) }}
+              className="leading-relaxed [&_p]:my-1 [&_div]:min-h-[1em]"
+              dangerouslySetInnerHTML={{ __html: item.content! }}
             />
           ) : (
             <div className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed">

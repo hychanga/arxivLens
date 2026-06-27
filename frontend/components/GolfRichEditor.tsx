@@ -98,9 +98,11 @@ export default function GolfRichEditor({
   function emitChange() {
     if (!ref.current) return;
     const hasText = Boolean(ref.current.textContent?.trim());
-    const html = hasText ? sanitizeGolf(ref.current.innerHTML) : "";
     setEmpty(!hasText);
-    onChange(html);
+    // Store raw innerHTML — DOMPurify is for display-side only.
+    // execCommand with styleWithCSS=true produces inline CSS (span[style])
+    // which can't be sanitized on save without risking stripping valid styles.
+    onChange(hasText ? ref.current.innerHTML : "");
   }
 
   function saveSelection() {
