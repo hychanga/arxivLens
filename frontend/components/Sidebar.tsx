@@ -18,7 +18,6 @@ const NAV: { href: string; tKey: string }[] = [
   { href: "/favorites", tKey: "nav.favorites" },
   { href: "/library",   tKey: "nav.library"   },
   { href: "/trends",    tKey: "nav.trends"    },
-  { href: "/golf",      tKey: "nav.golf"      },
   { href: "/admin",     tKey: "nav.admin"     },
 ];
 
