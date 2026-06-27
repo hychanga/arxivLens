@@ -356,6 +356,11 @@ export default function GolfPage() {
                         onChange={async (e) => {
                           const f = e.target.files?.[0];
                           if (!f) return;
+                          if (f.size > 20 * 1024 * 1024) {
+                            flash("PDF 檔案不能超過 20 MB", "error");
+                            e.target.value = "";
+                            return;
+                          }
                           setUploadingPdf(true);
                           try {
                             const url = await uploadGolfPdf(f);
