@@ -434,10 +434,9 @@ function ResourceCard({
             <h3 className="font-medium text-sm">{item.title}</h3>
           </div>
           {item.summary && (
-            <div
-              className="text-xs text-zinc-500 line-clamp-2"
-              dangerouslySetInnerHTML={{ __html: item.summary }}
-            />
+            <p className="text-xs text-zinc-500 line-clamp-2">
+              {item.summary.replace(/<[^>]*>/g, "")}
+            </p>
           )}
           {tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1.5">
