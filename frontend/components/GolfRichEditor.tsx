@@ -6,6 +6,81 @@ export function looksLikeHtml(s: string | null | undefined): boolean {
   return s ? /<[a-z][\s\S]*>/i.test(s) : false;
 }
 
+// Dual-mode storage: content fields hold JSON {raw, light, dark}.
+// "raw"   = what the user typed (restored to the editor on next edit)
+// "light" = adapted for light mode (very-light colours → dark complement)
+// "dark"  = adapted for dark mode  (very-dark colours → light complement)
+//
+// Legacy entries (plain string) and old dual-format entries (no "raw" key) are
+// auto-adapted on the fly so they display correctly without needing a re-save.
+export interface DualHtml { raw: string; light: string; dark: string }
+
+export function decodeDual(stored: string | null | undefined): DualHtml {
+  if (!stored) return { raw: "", light: "", dark: "" };
+  try {
+    const p = JSON.parse(stored);
+    if (p && typeof p === "object") {
+      if ("raw" in p) {
+        // Current format — use pre-computed light/dark from save time.
+        return {
+          raw:   String(p.raw),
+          light: String(p.light ?? p.raw),
+          dark:  String(p.dark  ?? p.raw),
+        };
+      }
+      // Old dual format ({light, dark} without raw) — re-adapt from stored content.
+      const src = String(p.light ?? p.dark ?? "");
+      return { raw: src, light: adaptHtmlColors(src, false), dark: adaptHtmlColors(src, true) };
+    }
+  } catch { /* not JSON — fall through */ }
+  // Legacy plain-HTML string — auto-adapt so existing records work immediately.
+  return { raw: stored, light: adaptHtmlColors(stored, false), dark: adaptHtmlColors(stored, true) };
+}
+
+// Adapts inline text colours in an HTML string so they remain readable in the
+// current theme. Called at card/editor display time (not at save time).
+//
+// Light mode (isDark=false): very light colours (lum > 0.4, e.g. white, yellow)
+//   → inverted to their RGB-complement so they show on a white background.
+// Dark mode (isDark=true): very dark colours (lum < 0.05, e.g. black)
+//   → inverted to their RGB-complement so they show on a dark background.
+//
+// Handles rgb(), #rrggbb, #rgb, and the named keywords "white"/"black".
+export function adaptHtmlColors(html: string, isDark: boolean): string {
+  if (!html) return html;
+  return html.replace(
+    /color:\s*(rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)|#[0-9a-f]{3,6}|white|black)/gi,
+    (_m, colorStr: string, r?: string, g?: string, b?: string) => {
+      let cr: number, cg: number, cb: number;
+      const lower = colorStr.trim().toLowerCase();
+      if (r !== undefined) {
+        cr = +r; cg = +g!; cb = +b!;
+      } else if (lower === "white") {
+        cr = cg = cb = 255;
+      } else if (lower === "black") {
+        cr = cg = cb = 0;
+      } else {
+        const h = lower.replace("#", "");
+        if (h.length === 3) {
+          cr = parseInt(h[0] + h[0], 16);
+          cg = parseInt(h[1] + h[1], 16);
+          cb = parseInt(h[2] + h[2], 16);
+        } else {
+          cr = parseInt(h.slice(0, 2), 16);
+          cg = parseInt(h.slice(2, 4), 16);
+          cb = parseInt(h.slice(4, 6), 16);
+        }
+      }
+      const ch = (x: number) => { const v = x / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+      const lum = 0.2126 * ch(cr) + 0.7152 * ch(cg) + 0.0722 * ch(cb);
+      const flip = (!isDark && lum > 0.4) || (isDark && lum < 0.05);
+      return flip
+        ? `color: rgb(${255 - cr}, ${255 - cg}, ${255 - cb})`
+        : `color: ${colorStr}`;
+    }
+  );
+}
+
 const FONTS: { label: string; css: string }[] = [
   { label: "Sans", css: "ui-sans-serif, system-ui, sans-serif" },
   { label: "Serif", css: "Georgia, 'Times New Roman', serif" },

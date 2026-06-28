@@ -36,3 +36,21 @@ html.cursor-busy,
 html.cursor-busy * {
   cursor: progress !important;
 }
+
+/* Auto-invert inline text colours that would be invisible in the current theme.
+ * CSS rules are a reliable backup for the JS adaptHtmlColors() pass in ResourceCard
+ * and also fix the rich-text editor contenteditable when the user switches modes.
+ *
+ * Light mode: very-light colours → dark complement */
+html:not(.dark) [style*="color: rgb(255, 255, 255)"] { color: rgb(0, 0, 0) !important; }
+html:not(.dark) [style*="color:rgb(255, 255, 255)"]  { color: rgb(0, 0, 0) !important; }
+html:not(.dark) [style*="color: #ffffff"]            { color: rgb(0, 0, 0) !important; }
+html:not(.dark) [style*="color: #fff"]               { color: rgb(0, 0, 0) !important; }
+html:not(.dark) [style*="color: white"]              { color: rgb(0, 0, 0) !important; }
+html:not(.dark) [style*="color: rgb(234, 179, 8)"]  { color: rgb(21, 76, 247) !important; }
+/* Dark mode: very-dark colours → light complement */
+html.dark [style*="color: rgb(0, 0, 0)"]            { color: rgb(255, 255, 255) !important; }
+html.dark [style*="color:rgb(0, 0, 0)"]             { color: rgb(255, 255, 255) !important; }
+html.dark [style*="color: #000000"]                 { color: rgb(255, 255, 255) !important; }
+html.dark [style*="color: #000"]                    { color: rgb(255, 255, 255) !important; }
+html.dark [style*="color: black"]                   { color: rgb(255, 255, 255) !important; }

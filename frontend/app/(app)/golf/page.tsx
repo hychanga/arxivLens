@@ -10,17 +10,22 @@ import {
   splitTags, youtubeId, youtubeEmbed, GOLF_CATEGORIES,
   type GolfResource, type GolfResourceInput,
 } from "@/lib/golfApi";
-import GolfRichEditor, { looksLikeHtml } from "@/components/GolfRichEditor";
+import GolfRichEditor, { looksLikeHtml, decodeDual, adaptHtmlColors } from "@/components/GolfRichEditor";
+
+// Encode content as {raw, light, dark} so the card can pick the right version.
+// "light" and "dark" are auto-derived at save time; the user only edits "raw".
+function encodeDualAuto(raw: string): string {
+  if (!raw) return "";
+  return JSON.stringify({
+    raw,
+    light: adaptHtmlColors(raw, false), // very-light colours → dark complement
+    dark:  adaptHtmlColors(raw, true),  // very-dark colours → light complement
+  });
+}
 
 const EMPTY_FORM: GolfResourceInput = {
-  title: "",
-  summary: "",
-  content: "",
-  category: "",
-  tags: "",
-  videoUrl: "",
-  pdfUrl: "",
-  source: "",
+  title: "", summary: "", content: "",
+  category: "", tags: "", videoUrl: "", pdfUrl: "", source: "",
 };
 
 export default function GolfPage() {
@@ -85,8 +90,8 @@ export default function GolfPage() {
     setEditing(r);
     setForm({
       title: r.title,
-      summary: r.summary ?? "",
-      content: r.content ?? "",
+      summary: decodeDual(r.summary).raw,
+      content: decodeDual(r.content).raw,
       category: r.category ?? "",
       tags: r.tags ?? "",
       videoUrl: r.videoUrl ?? "",
@@ -102,7 +107,16 @@ export default function GolfPage() {
     if (!form.title?.trim()) return;
     setSubmitting(true);
     try {
-      const payload: GolfResourceInput = { ...form, title: form.title.trim() };
+      const payload: GolfResourceInput = {
+        title:    form.title.trim(),
+        summary:  encodeDualAuto(form.summary ?? ""),
+        content:  encodeDualAuto(form.content ?? ""),
+        category: form.category,
+        tags:     form.tags,
+        videoUrl: form.videoUrl,
+        pdfUrl:   form.pdfUrl,
+        source:   form.source,
+      };
       if (editing) {
         const updated = await updateGolf(editing.id, payload);
         setItems(prev => prev.map(r => r.id === updated.id ? updated : r));
@@ -222,18 +236,19 @@ export default function GolfPage() {
       {modalOpen && (
         <div
           onClick={() => setModalOpen(false)}
-          className="fixed inset-0 z-40 flex items-start justify-center bg-black/50 px-4 py-8 overflow-y-auto"
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4 py-8"
           role="dialog"
           aria-modal="true"
         >
           <div
             onClick={e => e.stopPropagation()}
-            className="w-full max-w-2xl rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 shadow-xl my-auto"
+            className="flex w-full max-w-2xl flex-col max-h-[calc(100vh-4rem)] rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xl"
           >
-            <h2 className="text-lg font-semibold mb-4">
+            <h2 className="shrink-0 px-6 pt-6 pb-4 text-lg font-semibold">
               {editing ? t("golf.edit_heading") : t("golf.add_heading")}
             </h2>
-            <form onSubmit={submit} className="space-y-3">
+            <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6">
               <FormField label={t("golf.field_title")} required>
                 <input
                   type="text"
@@ -379,8 +394,9 @@ export default function GolfPage() {
                   </div>
                 </FormField>
               </div>
+              </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex shrink-0 justify-end gap-2 border-t border-zinc-100 dark:border-zinc-800 px-6 py-4">
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
@@ -420,6 +436,23 @@ function ResourceCard({
   const embedUrl = vid ? `https://www.youtube.com/embed/${vid}` : null;
   const [playing, setPlaying] = useState(false);
 
+  // Track dark mode to pick the right dual-mode content version.
+  const [isDark, setIsDark] = useState(() =>
+    typeof window !== "undefined" && document.documentElement.classList.contains("dark")
+  );
+  useEffect(() => {
+    const el = document.documentElement;
+    setIsDark(el.classList.contains("dark"));
+    const obs = new MutationObserver(() => setIsDark(el.classList.contains("dark")));
+    obs.observe(el, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
+
+  const sumDual = decodeDual(item.summary);
+  const conDual = decodeDual(item.content);
+  const displaySummary = isDark ? (sumDual.dark || sumDual.light) : sumDual.light;
+  const displayContent = isDark ? (conDual.dark || conDual.light) : conDual.light;
+
   return (
     <li className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4">
       <div className="flex items-start gap-3">
@@ -433,10 +466,10 @@ function ResourceCard({
             )}
             <h3 className="font-medium text-sm">{item.title}</h3>
           </div>
-          {item.summary && (
+          {displaySummary && (
             <div
               className="text-xs text-zinc-500 line-clamp-2"
-              dangerouslySetInnerHTML={{ __html: item.summary }}
+              dangerouslySetInnerHTML={{ __html: displaySummary }}
             />
           )}
           {tags.length > 0 && (
@@ -503,16 +536,16 @@ function ResourceCard({
         </div>
       </div>
 
-      {expanded && item.content && (
+      {expanded && displayContent && (
         <div className="mt-3 border-t border-zinc-100 dark:border-zinc-800 pt-3">
-          {looksLikeHtml(item.content) ? (
+          {looksLikeHtml(displayContent) ? (
             <div
               className="leading-relaxed [&_p]:my-1 [&_div]:min-h-[1em]"
-              dangerouslySetInnerHTML={{ __html: item.content! }}
+              dangerouslySetInnerHTML={{ __html: displayContent }}
             />
           ) : (
             <div className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed">
-              {item.content}
+              {displayContent}
             </div>
           )}
         </div>
