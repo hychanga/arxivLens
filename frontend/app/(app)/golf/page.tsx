@@ -448,6 +448,14 @@ function ResourceCard({
     return () => obs.disconnect();
   }, []);
 
+  // Close the reading pop-up with Escape for keyboard users.
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onToggle(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expanded, onToggle]);
+
   const sumDual = decodeDual(item.summary);
   const conDual = decodeDual(item.content);
   const displaySummary = isDark ? (sumDual.dark || sumDual.light) : sumDual.light;
@@ -480,6 +488,11 @@ function ResourceCard({
                 </span>
               ))}
             </div>
+          )}
+          {(displaySummary || displayContent) && (
+            <span className="mt-1.5 inline-block text-xs text-indigo-600 dark:text-indigo-400">
+              {t("golf.read_more")}
+            </span>
           )}
         </button>
 
@@ -536,18 +549,87 @@ function ResourceCard({
         </div>
       </div>
 
-      {expanded && displayContent && (
-        <div className="mt-3 border-t border-zinc-100 dark:border-zinc-800 pt-3">
-          {looksLikeHtml(displayContent) ? (
-            <div
-              className="leading-relaxed [&_p]:my-1 [&_div]:min-h-[1em]"
-              dangerouslySetInnerHTML={{ __html: displayContent }}
-            />
-          ) : (
-            <div className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed">
-              {displayContent}
+      {/* reading pop-up — full summary + content */}
+      {expanded && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4 py-8"
+          onClick={onToggle}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="flex w-full max-w-2xl flex-col max-h-[calc(100vh-4rem)] rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xl"
+          >
+            <div className="flex shrink-0 items-start gap-3 border-b border-zinc-100 dark:border-zinc-800 px-6 pt-6 pb-4">
+              <div className="min-w-0 flex-1">
+                {item.category && (
+                  <span className="mb-1 inline-block rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 text-xs px-2 py-0.5">
+                    {item.category}
+                  </span>
+                )}
+                <h2 className="text-lg font-semibold break-words">{item.title}</h2>
+              </div>
+              <button
+                type="button"
+                onClick={onToggle}
+                aria-label="關閉"
+                className="shrink-0 rounded px-2 py-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+              >
+                ✕
+              </button>
             </div>
-          )}
+
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4">
+              {displaySummary && (
+                <div
+                  className="text-sm text-zinc-600 dark:text-zinc-300 [&_p]:my-1"
+                  dangerouslySetInnerHTML={{ __html: displaySummary }}
+                />
+              )}
+              {displayContent && (
+                looksLikeHtml(displayContent) ? (
+                  <div
+                    className="leading-relaxed [&_p]:my-1 [&_div]:min-h-[1em]"
+                    dangerouslySetInnerHTML={{ __html: displayContent }}
+                  />
+                ) : (
+                  <div className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed">
+                    {displayContent}
+                  </div>
+                )
+              )}
+              {!displaySummary && !displayContent && (
+                <p className="text-sm text-zinc-500">{t("golf.empty")}</p>
+              )}
+              {tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {tags.map((tag, i) => (
+                    <span key={i} className="rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs px-1.5 py-0.5">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {(item.source || item.pdfUrl) && (
+              <div className="flex shrink-0 gap-3 border-t border-zinc-100 dark:border-zinc-800 px-6 py-3 text-sm">
+                {item.source && (
+                  <a href={item.source} target="_blank" rel="noopener noreferrer"
+                    className="text-indigo-600 dark:text-indigo-400 hover:underline">
+                    {t("golf.field_source")} ↗
+                  </a>
+                )}
+                {item.pdfUrl && (
+                  <a href={item.pdfUrl} target="_blank" rel="noopener noreferrer"
+                    className="text-indigo-600 dark:text-indigo-400 hover:underline">
+                    PDF ↗
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
