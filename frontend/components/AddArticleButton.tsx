@@ -252,6 +252,7 @@ export default function AddArticleButton({ sourceId, sourceCode, onAdded }: Prop
                   <Field
                     label={t("feed.add_article_date")}
                     type="date"
+                    required
                     value={publishedAt}
                     onChange={setPublishedAt}
                   />
@@ -284,7 +285,7 @@ export default function AddArticleButton({ sourceId, sourceCode, onAdded }: Prop
                     submitting ? t("feed.add_article_saving") : t("feed.add_article_save")
                   }
                   submitting={submitting}
-                  submitDisabled={!title.trim() || !content.trim()}
+                  submitDisabled={!title.trim() || !content.trim() || !publishedAt}
                 />
               </form>
             )}
