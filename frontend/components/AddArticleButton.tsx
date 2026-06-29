@@ -62,6 +62,9 @@ export default function AddArticleButton({ sourceId, sourceCode, onAdded }: Prop
   const t = useT();
   const flash = useUiStore((s) => s.flash);
 
+  // Sources where server-side URL fetching is blocked (Cloudflare / JS-only rendering).
+  const pasteOnly = sourceCode === "medium";
+
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("url");
   const [submitting, setSubmitting] = useState(false);
@@ -184,13 +187,15 @@ export default function AddArticleButton({ sourceId, sourceCode, onAdded }: Prop
               {t("feed.add_article_heading")}
             </h2>
 
-            {/* Tabs */}
-            <div role="tablist" aria-label="Add article mode" className="mt-4 flex gap-2 text-sm">
-              <TabButton id="url" current={mode} setMode={setMode} label={t("feed.add_tab_url")} />
-              <TabButton id="paste" current={mode} setMode={setMode} label={t("feed.add_tab_paste")} />
-            </div>
+            {/* Tabs — hidden for sources where URL fetch is blocked */}
+            {!pasteOnly && (
+              <div role="tablist" aria-label="Add article mode" className="mt-4 flex gap-2 text-sm">
+                <TabButton id="url" current={mode} setMode={setMode} label={t("feed.add_tab_url")} />
+                <TabButton id="paste" current={mode} setMode={setMode} label={t("feed.add_tab_paste")} />
+              </div>
+            )}
 
-            {mode === "url" ? (
+            {!pasteOnly && mode === "url" ? (
               <form onSubmit={submitUrl} className="mt-4 space-y-3" aria-busy={submitting}>
                 <p className="text-xs text-zinc-500">{t("feed.add_url_hint")}</p>
                 <div>
@@ -234,6 +239,11 @@ export default function AddArticleButton({ sourceId, sourceCode, onAdded }: Prop
               </form>
             ) : (
               <form onSubmit={submitPaste} className="mt-4 space-y-3" aria-busy={submitting}>
+                {pasteOnly && (
+                  <p className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1.5">
+                    {t("feed.add_medium_note")}
+                  </p>
+                )}
                 <p className="text-xs text-zinc-500">{t("feed.add_article_hint")}</p>
                 <Field
                   label={t("feed.add_article_title")}
