@@ -56,7 +56,10 @@ public class ImageProxyService {
             // Group (天下雜誌); their inline article images live under
             // imgs.cwgv.com.tw and similar cwgv.com.tw subdomains.
             "cwgv.com.tw",
-            "cw.com.tw"
+            "cw.com.tw",
+            // Medium article images are served from miro.medium.com
+            // (and historically cdn-images-1.medium.com).
+            "medium.com"
     );
 
     private static boolean hostAllowed(String host) {

@@ -33,6 +33,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 @Transactional(readOnly = true)
@@ -128,6 +129,46 @@ public class PaperService {
         return papers.findFeed(sourceId, since, safeTopicCode, pageable);
     }
 
+    /** Matches a bare URL whose path ends with a common image extension. */
+    private static final Pattern BARE_IMAGE_EXT_URL = Pattern.compile(
+            "https?://\\S+\\.(?:png|jpg|jpeg|webp|gif|avif|svg)(?:[?#]\\S*)?",
+            Pattern.CASE_INSENSITIVE);
+
+    /** Matches any URL from Medium's image CDN regardless of extension. */
+    private static final Pattern MEDIUM_IMAGE_URL = Pattern.compile(
+            "https?://miro\\.medium\\.com/\\S+",
+            Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Scans each line of a pasted article body and wraps bare image URLs in
+     * markdown image syntax {@code ![](url)} so {@code BodyContent} renders
+     * them as {@code <img>} elements (via the image proxy) rather than raw text.
+     *
+     * <p>Only lines that consist entirely of a URL (no surrounding words or
+     * spaces) are converted — this avoids mishandling embedded links inside
+     * prose.  Lines already starting with {@code ![} are left untouched.
+     */
+    static String injectImageMarkdown(String body) {
+        if (body == null || body.isBlank()) return body;
+        String[] lines = body.split("\n", -1);
+        StringBuilder sb = new StringBuilder(body.length() + 64);
+        for (int i = 0; i < lines.length; i++) {
+            if (i > 0) sb.append('\n');
+            String trimmed = lines[i].trim();
+            if (trimmed.isEmpty() || trimmed.startsWith("![") || trimmed.contains(" ")) {
+                sb.append(lines[i]);
+                continue;
+            }
+            if (BARE_IMAGE_EXT_URL.matcher(trimmed).matches()
+                    || MEDIUM_IMAGE_URL.matcher(trimmed).matches()) {
+                sb.append("![](").append(trimmed).append(")");
+            } else {
+                sb.append(lines[i]);
+            }
+        }
+        return sb.toString();
+    }
+
     /**
      * Inserts a user-pasted article as a {@link Paper}.
      *
@@ -155,10 +196,13 @@ public class PaperService {
         rejectIfTitleExists(src.getId(), title);
 
         String externalId = "manual-" + UUID.randomUUID();
-        String body = req.content().trim();
-        String abstractText = body.length() > ABSTRACT_PREVIEW_CHARS
-                ? body.substring(0, ABSTRACT_PREVIEW_CHARS).trim() + "…"
-                : body;
+        String rawBody = req.content().trim();
+        String body = injectImageMarkdown(rawBody);
+        // Abstract uses the raw (pre-injection) text so the feed card teaser
+        // shows readable prose rather than ![](url) markers.
+        String abstractText = rawBody.length() > ABSTRACT_PREVIEW_CHARS
+                ? rawBody.substring(0, ABSTRACT_PREVIEW_CHARS).trim() + "…"
+                : rawBody;
 
         List<String> authors = parseAuthors(req.author());
 
