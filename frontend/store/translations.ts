@@ -145,7 +145,9 @@ export const useTranslationsStore = create<TranslationsState>((set, get) => ({
     set((prev) => {
       const byKey = { ...prev.byKey };
       delete byKey[key];
-      return { byKey };
+      const notFound = new Set(prev.notFound);
+      notFound.delete(key);
+      return { byKey, notFound };
     });
   },
 

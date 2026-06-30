@@ -261,7 +261,10 @@ export default function PaperCard({
       <EditArticleModal
         paper={paper}
         onClose={() => setEditing(false)}
-        onSaved={() => void refetchPapers()}
+        onSaved={() => {
+          clearLocal(paper.id, locale);
+          void refetchPapers();
+        }}
       />
     )}
   </>
