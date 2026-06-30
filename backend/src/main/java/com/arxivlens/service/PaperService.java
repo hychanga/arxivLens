@@ -3,6 +3,7 @@ package com.arxivlens.service;
 import com.arxivlens.dto.PaperDtos.ImportUrlRequest;
 import com.arxivlens.dto.PaperDtos.ManualPaperRequest;
 import com.arxivlens.dto.PaperDtos.ManualPaperResponse;
+import com.arxivlens.dto.PaperDtos.UpdateManualPaperRequest;
 import com.arxivlens.entity.Download;
 import com.arxivlens.entity.Favorite;
 import com.arxivlens.entity.Paper;
@@ -302,23 +303,74 @@ public class PaperService {
     }
 
     /**
+     * Updates the editable fields of a manually-added article. Re-derives the
+     * abstract preview from the new body so the feed card stays in sync.
+     * Duplicate title/URL checks skip the paper being edited (same semantics
+     * as create, but the current row is excluded so saving without changes works).
+     */
+    @Transactional
+    public ManualPaperResponse updateManual(Long paperId, UpdateManualPaperRequest req) {
+        Paper p = papers.findById(paperId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Paper not found"));
+        if (p.getExternalId() == null || !p.getExternalId().startsWith("manual-")) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Only manually-added articles can be edited.");
+        }
+
+        String title = req.title().trim();
+        String url = blankToNull(req.url());
+        rejectIfUrlExists(p.getSourceId(), url, paperId);
+        rejectIfTitleExists(p.getSourceId(), title, paperId);
+
+        String rawBody = req.content().trim();
+        String body = injectImageMarkdown(rawBody);
+        String abstractText = rawBody.length() > ABSTRACT_PREVIEW_CHARS
+                ? rawBody.substring(0, ABSTRACT_PREVIEW_CHARS).trim() + "…"
+                : rawBody;
+
+        List<String> authors = parseAuthors(req.author());
+
+        p.setTitle(title);
+        p.setAuthorsJson(toJsonStringArray(authors));
+        p.setAbstractText(abstractText);
+        p.setIntroduction(body);
+        p.setUrl(url);
+        p.setPublishedAt(req.publishedAt() != null ? req.publishedAt() : p.getPublishedAt());
+
+        return new ManualPaperResponse(p.getId(), p.getExternalId(), p.getTitle(), authors, p.getPublishedAt());
+    }
+
+    /**
      * Rejects a manual add when another article in the same source already has
      * this URL. No-op when {@code url} is null (paste-without-link). Pairs with
      * {@link #rejectIfTitleExists}.
      */
     private void rejectIfUrlExists(Long sourceId, String url) {
-        if (url != null && papers.findFirstBySourceIdAndUrl(sourceId, url).isPresent()) {
-            throw new ApiException(HttpStatus.CONFLICT, "DUPLICATE_URL",
-                    "An article with this URL already exists in this feed.");
-        }
+        rejectIfUrlExists(sourceId, url, null);
+    }
+
+    private void rejectIfUrlExists(Long sourceId, String url, Long excludeId) {
+        if (url == null) return;
+        papers.findFirstBySourceIdAndUrl(sourceId, url).ifPresent(existing -> {
+            if (!existing.getId().equals(excludeId)) {
+                throw new ApiException(HttpStatus.CONFLICT, "DUPLICATE_URL",
+                        "An article with this URL already exists in this feed.");
+            }
+        });
     }
 
     /** Rejects a manual add when another article in the same source has the same title (case-insensitive). */
     private void rejectIfTitleExists(Long sourceId, String title) {
-        if (papers.findFirstBySourceIdAndTitleIgnoreCase(sourceId, title).isPresent()) {
-            throw new ApiException(HttpStatus.CONFLICT, "DUPLICATE_TITLE",
-                    "An article with this title already exists in this feed.");
-        }
+        rejectIfTitleExists(sourceId, title, null);
+    }
+
+    private void rejectIfTitleExists(Long sourceId, String title, Long excludeId) {
+        papers.findFirstBySourceIdAndTitleIgnoreCase(sourceId, title).ifPresent(existing -> {
+            if (!existing.getId().equals(excludeId)) {
+                throw new ApiException(HttpStatus.CONFLICT, "DUPLICATE_TITLE",
+                        "An article with this title already exists in this feed.");
+            }
+        });
     }
 
     /**

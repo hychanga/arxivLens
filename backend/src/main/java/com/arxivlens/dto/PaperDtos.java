@@ -40,6 +40,19 @@ public final class PaperDtos {
     ) {}
 
     /**
+     * Body for {@code PATCH /api/papers/{id}}. Updates a manually-added paper
+     * in place. All fields except {@code title} and {@code content} are optional
+     * in the same sense as {@link ManualPaperRequest}: null / blank means "clear".
+     */
+    public record UpdateManualPaperRequest(
+            @NotBlank @Size(max = 512) String title,
+            @NotBlank String content,
+            @Size(max = 512) String url,
+            @Size(max = 256) String author,
+            Instant publishedAt
+    ) {}
+
+    /**
      * Body for {@code POST /api/papers/import-url}. Server fetches the URL,
      * extracts title + content, and saves a Paper in one shot.
      *

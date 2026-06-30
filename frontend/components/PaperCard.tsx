@@ -14,6 +14,7 @@ import { usePapersStore } from "@/store/papers";
 import { useFavoritesStore } from "@/store/favorites";
 import { useDownloadsStore } from "@/store/downloads";
 import BodyContent from "@/components/BodyContent";
+import EditArticleModal from "@/components/EditArticleModal";
 import { highlight } from "@/lib/highlight";
 
 interface Props {
@@ -49,6 +50,7 @@ export default function PaperCard({
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [editing, setEditing] = useState(false);
   const t = useT();
   const locale = useLocaleStore((s) => s.locale);
   const translation = useTranslationsStore((s) => s.byKey[`${paper.id}:${locale}`]);
@@ -120,6 +122,7 @@ export default function PaperCard({
   }
 
   return (
+    <>
     <li
       className={`rounded-lg border p-4 ${
         saved
@@ -230,14 +233,23 @@ export default function PaperCard({
                   </a>
                 )}
                 {isManual && (
-                  <button
-                    type="button"
-                    onClick={onDelete}
-                    disabled={deleting}
-                    className="ml-auto rounded text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 px-2 py-1 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-                  >
-                    {deleting ? t("modal.deleting") : t("modal.delete")}
-                  </button>
+                  <div className="ml-auto flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditing(true)}
+                      className="rounded border border-zinc-300 dark:border-zinc-600 px-2 py-1 hover:bg-zinc-50 dark:hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    >
+                      {t("modal.edit")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onDelete}
+                      disabled={deleting}
+                      className="rounded text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 px-2 py-1 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                    >
+                      {deleting ? t("modal.deleting") : t("modal.delete")}
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -245,5 +257,13 @@ export default function PaperCard({
         </div>
       </div>
     </li>
+    {editing && (
+      <EditArticleModal
+        paper={paper}
+        onClose={() => setEditing(false)}
+        onSaved={() => void refetchPapers()}
+      />
+    )}
+  </>
   );
 }
