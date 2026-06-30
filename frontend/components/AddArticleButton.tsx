@@ -43,6 +43,7 @@ function expectedUrlSubstring(sourceCode: string | undefined): string | null {
     case "businessweekly": return "businessweekly";
     case "mckinsey": return "mckinsey";
     case "medium": return "medium.com";
+    case "managertoday": return "managertoday.com.tw";
     case "golf": return null;
     default: return null;
   }

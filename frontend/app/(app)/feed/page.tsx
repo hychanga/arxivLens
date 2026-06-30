@@ -213,7 +213,8 @@ export default function FeedPage() {
             currentSourceCode === "businessweekly" ||
             currentSourceCode === "mckinsey" ||
             currentSourceCode === "golf" ||
-            currentSourceCode === "medium") && (
+            currentSourceCode === "medium" ||
+            currentSourceCode === "managertoday") && (
           <div className="flex items-center gap-2">
             <AddArticleButton
               sourceId={currentSource.id}
