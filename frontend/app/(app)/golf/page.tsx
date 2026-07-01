@@ -29,8 +29,7 @@ const EMPTY_FORM: GolfResourceInput = {
 };
 
 export default function GolfPage() {
-  const role = useAuthStore((s) => s.user?.role);
-  const isAdmin = role === "ADMIN";
+  const isLoggedIn = !!useAuthStore((s) => s.user);
   const flash = useUiStore((s) => s.flash);
   const ask = useUiStore((s) => s.ask);
   const t = useT();
@@ -171,7 +170,7 @@ export default function GolfPage() {
               </button>
             )}
           </div>
-          {isAdmin && (
+          {isLoggedIn && (
             <button
               type="button"
               onClick={openCreate}
@@ -220,7 +219,7 @@ export default function GolfPage() {
           <ResourceCard
             key={r.id}
             item={r}
-            isAdmin={isAdmin}
+            canManage={isLoggedIn}
             expanded={expanded === r.id}
             onToggle={() => setExpanded(expanded === r.id ? null : r.id)}
             onEdit={() => openEdit(r)}
@@ -421,10 +420,10 @@ export default function GolfPage() {
 }
 
 function ResourceCard({
-  item, isAdmin, expanded, onToggle, onEdit, onDelete, t,
+  item, canManage, expanded, onToggle, onEdit, onDelete, t,
 }: {
   item: GolfResource;
-  isAdmin: boolean;
+  canManage: boolean;
   expanded: boolean;
   onToggle: () => void;
   onEdit: () => void;
@@ -534,7 +533,7 @@ function ResourceCard({
               PDF
             </a>
           )}
-          {isAdmin && (
+          {canManage && (
             <>
               <button type="button" onClick={onEdit}
                 className="rounded px-2 py-1 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800">

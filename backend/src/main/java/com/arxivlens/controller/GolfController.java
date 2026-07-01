@@ -39,7 +39,6 @@ public class GolfController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public GolfResource create(@Valid @RequestBody GolfResourceRequest req) {
-        requireAdmin();
         GolfResource r = new GolfResource();
         apply(r, req);
         r.setCreatedBy(AuthUtil.currentUserEmail());
@@ -48,7 +47,6 @@ public class GolfController {
 
     @PutMapping("/{id}")
     public GolfResource update(@PathVariable Long id, @Valid @RequestBody GolfResourceRequest req) {
-        requireAdmin();
         GolfResource r = repository.findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Not found"));
         apply(r, req);
@@ -58,7 +56,6 @@ public class GolfController {
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
-        requireAdmin();
         if (!repository.existsById(id)) {
             throw new ApiException(HttpStatus.NOT_FOUND, "Not found");
         }
@@ -67,7 +64,6 @@ public class GolfController {
 
     @PostMapping("/suggest-tags")
     public List<String> suggestTags(@RequestBody SuggestTagsRequest req) {
-        requireAdmin();
         if (!ai.isConfigured())
             throw new ApiException(HttpStatus.NOT_IMPLEMENTED, "AI not configured — set GEMINI_API_KEY");
         return ai.suggestGolfTags(
@@ -77,12 +73,6 @@ public class GolfController {
     }
 
     record SuggestTagsRequest(String title, String summary, String content) {}
-
-    private void requireAdmin() {
-        if (!AuthUtil.isAdmin()) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "Admin only");
-        }
-    }
 
     private void apply(GolfResource r, GolfResourceRequest req) {
         r.setTitle(req.title().trim());
