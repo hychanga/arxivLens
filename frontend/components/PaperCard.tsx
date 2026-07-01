@@ -162,6 +162,11 @@ export default function PaperCard({
             <span>{fmtDate(paper.publishedAt)}</span>
             {saved && <span className="text-emerald-600 dark:text-emerald-400">{t("card.saved")}</span>}
             {cached && <span className="text-sky-600 dark:text-sky-400">{t("card.cached")}</span>}
+            {paper.locked && (
+              <span className="rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 px-1.5 py-0.5 text-[10px]">
+                {t("card.member_only")}
+              </span>
+            )}
             {showScore && score != null && score > 0 && (
               <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${scoreBadgeClass(score)}`}>
                 {score}/10

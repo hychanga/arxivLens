@@ -27,6 +27,8 @@ export interface Paper {
   pdfUrl: string | null;
   pages: number | null;
   topicCode: string | null;
+  /** True when the Medium RSS marked this article as member-only. */
+  locked?: boolean | null;
   publishedAt: string;
   fetchedAt: string;
 }

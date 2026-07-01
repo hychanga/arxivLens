@@ -94,6 +94,10 @@ public class Paper {
     @Column(name = "categories", length = 512)
     private String categories;
 
+    /** True when the Medium RSS feed marks the article as member-only (paywalled). */
+    @Column(name = "is_locked")
+    private Boolean locked;
+
     @Column(name = "published_at", nullable = false)
     private Instant publishedAt;
 

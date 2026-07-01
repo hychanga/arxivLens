@@ -165,6 +165,7 @@ public class MediumSyncService implements SourceSyncService {
         p.setPdfUrl(null);
         p.setTopicCode(topic.getCode());
         p.setPublishedAt(item.pubDate() != null ? item.pubDate() : Instant.now());
+        p.setLocked(item.locked() ? Boolean.TRUE : null);
         return p;
     }
 
@@ -199,15 +200,16 @@ public class MediumSyncService implements SourceSyncService {
                 String link   = text(el, "link");
                 String guid   = text(el, "guid");
                 String desc   = firstNonBlank(text(el, "content:encoded"), text(el, "description"));
-                String author = firstNonBlank(text(el, "dc:creator"), text(el, "author"));
-                Instant pub   = parseDate(text(el, "pubDate"));
-                String id     = extractId(firstNonBlank(guid, link));
-                add(new RssItem(title.trim(), link.trim(), desc, author.trim(), pub, id));
+                String author  = firstNonBlank(text(el, "dc:creator"), text(el, "author"));
+                Instant pub    = parseDate(text(el, "pubDate"));
+                String id      = extractId(firstNonBlank(guid, link));
+                boolean locked = "true".equalsIgnoreCase(text(el, "medium:locked").trim());
+                add(new RssItem(title.trim(), link.trim(), desc, author.trim(), pub, id, locked));
             }
         }};
     }
 
-    private record RssItem(String title, String link, String description, String author, Instant pubDate, String articleId) {}
+    private record RssItem(String title, String link, String description, String author, Instant pubDate, String articleId, boolean locked) {}
 
     // ── small utilities ────────────────────────────────────────────────────
 

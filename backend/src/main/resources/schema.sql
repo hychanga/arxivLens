@@ -79,6 +79,7 @@ CREATE TABLE papers (
     page_count    INT,
     topic_code    VARCHAR(64),
     categories    VARCHAR(512),
+    is_locked     TINYINT(1)    NOT NULL DEFAULT 0,
     published_at  DATETIME      NOT NULL,
     fetched_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_papers_source_external (source_id, external_id),

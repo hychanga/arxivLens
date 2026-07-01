@@ -115,6 +115,8 @@ public class SchemaBootstrap {
         addColumnIfMissing("users", "totp_secret", "VARCHAR(64) NULL");
         // Per-topic incremental sync watermark — see Topic.lastSyncedAt.
         addColumnIfMissing("topics", "last_synced_at", "DATETIME(6) NULL");
+        // Medium member-only flag — see MediumSyncService.
+        addColumnIfMissing("papers", "is_locked", "TINYINT(1) NOT NULL DEFAULT 0");
         // Ensure the canonical source rows exist in prod (data.sql only runs
         // locally). hbr is in here too because at least one prod DB lost the
         // row at some point — re-create it idempotently on every boot so the
